@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::ops::Range;
 
-use super::recording::{check_read, ChannelInfo, Recording, RecordingInfo, SignalKind};
+use super::recording::{check_read, Calibration, ChannelInfo, Recording, RecordingInfo, SignalKind};
 use nc_base::{Error, MemoryOrder, Result, SampleType};
 
 /// Recording held in memory as channel-major, already-scaled samples (tests, derived data).
@@ -24,9 +24,11 @@ impl MemoryRecording {
             sample_rate,
             start_time: 0.0,
             unit: unit.into(),
+            calibration: Calibration::Known,
             kind: SignalKind::Other,
             stored_as: SampleType::F32,
             order: MemoryOrder::ChannelMajor,
+            storage: "memory".into(),
             metadata: BTreeMap::new(),
         };
         Ok(Self { info, data })
