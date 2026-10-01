@@ -1,8 +1,8 @@
-//! Neurodata Without Borders (NWB 2.11) output.
+//! nc-nwb: Neurodata Without Borders (NWB 2.11) output.
 //!
 //! [`mapping::resolve`] turns a [`Session`] plus the user's metadata file into an [`NwbPlan`];
 //! [`write`] writes that plan through a storage [`backend`] (Zarr today), streaming continuous
-//! data in parallel chunks.
+//! data in parallel chunks. Nothing here knows which reader produced the session.
 
 pub mod backend;
 pub mod mapping;
@@ -16,10 +16,14 @@ use std::time::{Duration, Instant};
 
 pub use mapping::{resolve, NwbPlan};
 
-use crate::error::{Error, Result};
-use crate::model::Session;
 use backend::zarr::ZarrBackend;
 use backend::Backend;
+use nc_core::{Error, Level, Result, Session};
+
+/// A fresh random identifier (UUID v4) for `NWBFile.identifier`.
+pub fn new_identifier() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
 
 /// Chunk length along time for continuous data.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,7 +105,7 @@ pub fn write(
     progress: &(dyn Fn(Progress) + Sync),
 ) -> Result<WriteSummary> {
     if plan.has_errors() {
-        let msgs: Vec<&str> = plan.issues.iter().filter(|i| i.level == crate::metadata::Level::Error).map(|i| i.message.as_str()).collect();
+        let msgs: Vec<&str> = plan.issues.iter().filter(|i| i.level == Level::Error).map(|i| i.message.as_str()).collect();
         return Err(Error::Unsupported(format!("the NWB plan has errors:\n  - {}", msgs.join("\n  - "))));
     }
     let started = Instant::now();

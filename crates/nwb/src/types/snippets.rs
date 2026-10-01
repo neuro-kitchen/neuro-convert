@@ -6,10 +6,9 @@ use serde_json::json;
 
 use super::electrodes::TABLE_PATH;
 use super::{attrs, column, typed, typed_with};
-use crate::error::Result;
-use crate::model::{SampleType, SnippetSeries};
-use crate::outputs::nwb::backend::Backend;
-use crate::outputs::nwb::mapping::SnippetPlan;
+use crate::backend::Backend;
+use crate::mapping::SnippetPlan;
+use nc_core::{Result, SampleType, SnippetSeries};
 
 fn reference(path: &str) -> serde_json::Value {
     json!({ "_REFERENCE": { "source": ".", "path": path } })

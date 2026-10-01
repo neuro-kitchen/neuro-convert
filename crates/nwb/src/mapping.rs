@@ -1,8 +1,7 @@
 //! Session + user metadata → an NWB plan: what is written where, and what is missing.
 
-use crate::common::time::{format_iso, parse_iso};
-use crate::metadata::{ImpedanceSpec, Issue, Level, MetadataFile, StreamType};
-use crate::model::{Device, Session, Table};
+use nc_base::time::{format_iso, parse_iso};
+use nc_core::{Device, ImpedanceSpec, Issue, Level, MetadataFile, SampleType, Session, StreamType, Table};
 
 /// NWB file-level fields, resolved.
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -258,7 +257,7 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
         }
         // TDT integer stores record a Synapse `Scale` (Milli, Micro, …) that TDT's own reader does not
         // apply; without a conversion the stored units would be written as they are
-        let integer = !matches!(info.stored_as, crate::model::SampleType::F32 | crate::model::SampleType::F64);
+        let integer = !matches!(info.stored_as, SampleType::F32 | SampleType::F64);
         if let Some(scale) = info.metadata.get("listing_scale").filter(|s| integer && s.as_str() != "Unity" && spec.conversion.is_none()) {
             issues.push(Issue::warning(format!(
                 "stream {}: stored as {} with TDT scale {scale:?} and no conversion; values are written as stored. \

@@ -3,9 +3,9 @@
 use serde_json::json;
 
 use super::{attrs, typed};
-use crate::error::Result;
-use crate::outputs::nwb::backend::Backend;
-use crate::outputs::nwb::mapping::SubjectFields;
+use crate::backend::Backend;
+use crate::mapping::SubjectFields;
+use nc_core::Result;
 
 pub fn write(b: &dyn Backend, s: &SubjectFields) -> Result<()> {
     b.group("/general/subject", typed("core", "Subject"))?;

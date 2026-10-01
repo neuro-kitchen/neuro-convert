@@ -7,9 +7,8 @@
 use serde_json::json;
 
 use super::typed_with;
-use crate::error::Result;
-use crate::model::Device;
-use crate::outputs::nwb::backend::{Attrs, Backend};
+use crate::backend::{Attrs, Backend};
+use nc_core::{Device, Result};
 
 pub fn write(b: &dyn Backend, devices: &[Device]) -> Result<()> {
     if devices.is_empty() {

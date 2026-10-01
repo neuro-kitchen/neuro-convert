@@ -4,10 +4,9 @@
 use serde_json::json;
 
 use super::{column, typed, typed_with};
-use crate::error::Result;
-use crate::model::EventSeries;
-use crate::outputs::nwb::backend::{Attrs, Backend};
-use crate::outputs::nwb::mapping::EventPlan;
+use crate::backend::{Attrs, Backend};
+use crate::mapping::EventPlan;
+use nc_core::{EventSeries, Result};
 
 pub fn write_group(b: &dyn Backend) -> Result<()> {
     b.group("/events", Attrs::new())

@@ -1,13 +1,17 @@
-//! NWB output on a small synthetic session. Writes `target/nwb-test/small.nwb.zarr`, which
-//! `tests/validate_nwb.py` reads back with pynwb + hdmf-zarr:
-//! `uv run --with pynwb --with hdmf-zarr --with nwbinspector tests/validate_nwb.py target/nwb-test/small.nwb.zarr`
+//! NWB output on a small synthetic session. Writes `<workspace>/target/nwb-test/small.nwb.zarr`,
+//! which `tools/python/validate_nwb.py` reads back with pynwb + hdmf-zarr (from the workspace root):
+//! `uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector tools/python/validate_nwb.py target/nwb-test/small.nwb.zarr --small`
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use neuro_convert::metadata::MetadataFile;
-use neuro_convert::model::{Device, EventSeries, MemoryRecording, Session, SnippetSeries, Table};
-use neuro_convert::outputs::nwb::{self, NwbOptions};
+use nc_core::{Device, EventSeries, MemoryRecording, MetadataFile, Session, SnippetSeries, Table};
+use nc_nwb::{self as nwb, NwbOptions};
+
+/// `<workspace>/target/nwb-test`: stores are kept for the Python read-back.
+fn out_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/nwb-test")
+}
 
 fn session() -> Session {
     let mut s = Session::default();
@@ -82,7 +86,7 @@ fn writes_small_nwb_zarr() {
     assert_eq!(plan.series.len(), 2);
     assert_eq!(plan.skipped, vec!["stream Skip".to_string()]);
 
-    let dest = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/nwb-test/small.nwb.zarr");
+    let dest = out_dir().join("small.nwb.zarr");
     let options = NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: Some(1) };
     assert_eq!(plan.snippets.len(), 1);
     assert_eq!(plan.snippets[0].rows, vec![(1, 0), (2, 1), (3, 2)], "channel c is the group's c-th electrode");
@@ -145,15 +149,15 @@ fn copy_dir(from: &Path, to: &Path) {
 
 /// float64 source with native stored reads.
 struct F64Recording {
-    info: neuro_convert::model::RecordingInfo,
+    info: nc_core::RecordingInfo,
     data: Vec<f64>,
 }
 
-impl neuro_convert::model::Recording for F64Recording {
-    fn info(&self) -> &neuro_convert::model::RecordingInfo {
+impl nc_core::Recording for F64Recording {
+    fn info(&self) -> &nc_core::RecordingInfo {
         &self.info
     }
-    fn read(&self, channels: &[usize], samples: std::ops::Range<u64>, out: &mut [f32]) -> neuro_convert::error::Result<()> {
+    fn read(&self, channels: &[usize], samples: std::ops::Range<u64>, out: &mut [f32]) -> nc_core::Result<()> {
         let n = (samples.end - samples.start) as usize;
         for (i, &c) in channels.iter().enumerate() {
             for t in 0..n {
@@ -162,7 +166,7 @@ impl neuro_convert::model::Recording for F64Recording {
         }
         Ok(())
     }
-    fn read_stored(&self, channels: &[usize], samples: std::ops::Range<u64>, out: &mut [u8]) -> neuro_convert::error::Result<bool> {
+    fn read_stored(&self, channels: &[usize], samples: std::ops::Range<u64>, out: &mut [u8]) -> nc_core::Result<bool> {
         let n = (samples.end - samples.start) as usize;
         for (i, &c) in channels.iter().enumerate() {
             for t in 0..n {
@@ -178,9 +182,9 @@ impl neuro_convert::model::Recording for F64Recording {
 fn float64_sources_stay_float64() {
     let mut s = session();
     let template = MemoryRecording::new("P", vec![0.0; 2 * 500], 2, 1000.0, "a.u.").unwrap();
-    let mut info = neuro_convert::model::Recording::info(&template).clone();
+    let mut info = nc_core::Recording::info(&template).clone();
     info.name = "Precise".into();
-    info.stored_as = neuro_convert::model::SampleType::F64;
+    info.stored_as = nc_core::SampleType::F64;
     // Values that float32 cannot hold exactly
     let data: Vec<f64> = (0..1000).map(|i| 1.0 + i as f64 * 1e-9).collect();
     s.recordings.push(Arc::new(F64Recording { info, data: data.clone() }));
@@ -188,7 +192,7 @@ fn float64_sources_stay_float64() {
     let meta = MetadataFile::parse(META).unwrap();
     let plan = nwb::resolve(&s, &meta, || "f64-id".into());
     assert!(!plan.has_errors(), "{:?}", plan.issues);
-    let dest = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/nwb-test/f64.nwb.zarr");
+    let dest = out_dir().join("f64.nwb.zarr");
     nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: None }, &|_| {}).unwrap();
 
     let meta_json: serde_json::Value =
@@ -207,8 +211,8 @@ fn float64_sources_stay_float64() {
 fn scaled_integer_tdt_stores_without_conversion_are_flagged() {
     let mut s = session();
     let template = MemoryRecording::new("MonA", vec![0.0; 100], 1, 24_414.0625, "a.u.").unwrap();
-    let mut info = neuro_convert::model::Recording::info(&template).clone();
-    info.stored_as = neuro_convert::model::SampleType::I16;
+    let mut info = nc_core::Recording::info(&template).clone();
+    info.stored_as = nc_core::SampleType::I16;
     info.metadata.insert("listing_scale".into(), "Milli".into());
     s.recordings.push(Arc::new(F64Recording { info, data: vec![0.0; 100] }));
     let meta = MetadataFile::parse(META).unwrap();
@@ -236,7 +240,7 @@ fn chunk_policy_parses_and_sizes_auto_chunks_by_bytes() {
     // An auto-chunked write: 3 × float32 → the whole 1000-sample series fits one chunk
     let s = session();
     let plan = nwb::resolve(&s, &MetadataFile::parse(META).unwrap(), || "auto-id".into());
-    let dest = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/nwb-test/auto.nwb.zarr");
+    let dest = out_dir().join("auto.nwb.zarr");
     nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: ChunkPolicy::Auto, gzip: None }, &|_| {}).unwrap();
     let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("acquisition/EMG/data/zarr.json")).unwrap()).unwrap();
     assert_eq!(meta["chunk_grid"]["configuration"]["chunk_shape"], serde_json::json!([1000, 3]));

@@ -13,8 +13,7 @@ use zarrs::array::Array;
 use zarrs::filesystem::FilesystemStore;
 use zarrs::storage::ReadableStorageTraits;
 
-use crate::error::{Error, Result};
-use crate::metadata::Issue;
+use nc_core::{Error, Issue, Result};
 
 /// Every node of the store: path (`/acquisition/HDEMG`) → its `zarr.json`.
 struct Store {
