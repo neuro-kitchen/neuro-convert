@@ -58,6 +58,12 @@ impl Registry {
         found
     }
 
+    /// Recordings inside `path` when it holds several (tank blocks, runs), from the reader that
+    /// claims it; pass one as `OpenOptions::block`.
+    pub fn containers(&self, path: &Path) -> Vec<String> {
+        self.detect(path).first().and_then(|d| self.get(d.format)).map_or_else(Vec::new, |r| r.containers(path))
+    }
+
     /// Opens `path` with the reader that claims it most confidently.
     pub fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
         let best = self.detect(path).into_iter().next().ok_or_else(|| Error::UnknownFormat(path.to_path_buf()))?;

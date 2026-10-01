@@ -8,6 +8,7 @@
 
 #[cfg(feature = "nwb")]
 pub mod job;
+pub mod preview;
 pub mod registry;
 
 pub use nc_base as base;
