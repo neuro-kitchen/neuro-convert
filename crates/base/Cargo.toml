@@ -1,0 +1,11 @@
+[package]
+name = "nc-base"
+description = "neuro-convert primitives: errors, sample types, decoding, memory maps, text and time helpers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+memmap2.workspace = true
+serde.workspace = true
+thiserror.workspace = true
