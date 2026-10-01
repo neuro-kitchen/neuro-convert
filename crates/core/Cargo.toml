@@ -5,6 +5,10 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Conformance checks for reader crates (use as a dev-dependency feature)
+testkit = []
+
 [dependencies]
 nc-base.workspace = true
 serde.workspace = true

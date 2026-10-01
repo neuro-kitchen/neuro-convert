@@ -30,6 +30,19 @@ pub enum SignalKind {
     Other,
 }
 
+/// Whether the values a recording returns are in physical units.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Calibration {
+    /// `read` values (stored × gain + offset) are in `unit`.
+    #[default]
+    Known,
+    /// The source records a scale it does not apply reliably, so values are stored units; a
+    /// writer needs a user-supplied conversion to reach physical units. `note` says what the
+    /// source records (e.g. `TDT scale "Milli"`).
+    Unknown { note: String },
+}
+
 /// Format-independent description of one continuous multi-channel signal.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RecordingInfo {
@@ -44,10 +57,15 @@ pub struct RecordingInfo {
     pub start_time: f64,
     /// Physical unit after scaling (`V`, `uV`, `a.u.`, …).
     pub unit: String,
+    pub calibration: Calibration,
     pub kind: SignalKind,
     /// How the source stores samples (reads always return channel-major `f32`).
     pub stored_as: SampleType,
     pub order: MemoryOrder,
+    /// Short label of the source storage, for display (e.g. `tev`, `sev v3`); empty if none.
+    pub storage: String,
+    /// Reader-specific extras, carried into reports. Writers never interpret these keys: anything
+    /// an output needs is a typed field.
     pub metadata: BTreeMap<String, String>,
 }
 

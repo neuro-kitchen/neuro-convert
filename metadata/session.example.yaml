@@ -21,6 +21,8 @@ subject:
   # strain: "Sprague Dawley"
   # description: ""
 
+# Groups declared here replace same-named groups from the reader; readers that know their probe
+# (geometry, channel map) supply groups and electrodes themselves.
 electrode_groups:
   - name: grid
     description: "Electrode array description"
@@ -29,10 +31,12 @@ electrode_groups:
     # impedance: { table: Z_grid }          # table with R1 (kOhm), R2 (kOhm), ... columns
 
 streams:
-  "*": { type: timeseries, unit: a.u. }     # default for every stream
+  "*": { type: timeseries, unit: a.u. }     # default for every stream (without a type, a stream
+                                            # whose channels all have reader electrodes is electrical)
   # SourceName:
   #   type: electrical                      # electrical (ElectricalSeries) or timeseries
-  #   electrode_group: grid                 # required for electrical streams
+  #   electrode_group: grid                 # one electrode per channel in this group (needed unless
+  #                                         # the reader already supplies the electrodes)
   #   name: OutputName                      # output name (default: source name)
   #   description: "..."
   #   conversion: 1.0                       # stored value → volts (electrical) or → unit
@@ -47,7 +51,8 @@ tables:
 
 snippets:
   # Spike snippet stores (e.g. TDT eNe1). Written as one NWB SpikeEventSeries per channel on the
-  # electrodes of `electrode_group` (channel c = the group's c-th electrode, 1-based); sorted
+  # electrodes of `electrode_group` (channel c = the c-th channel of the group's first stream,
+  # 1-based; a group without streams gets one electrode per snippet channel); sorted
   # snippets (non-zero sort codes) also go to /units, one unit per channel and sort code.
   # SourceName:
   #   electrode_group: grid                 # required to write the store
