@@ -1,7 +1,10 @@
 //! Session + user metadata → an NWB plan: what is written where, and what is missing.
+//!
+//! Electrodes come from the session (reader-supplied, or merged from the metadata file by
+//! `MetadataFile::apply`); the metadata file here only decides naming, units and inclusion.
 
 use nc_base::time::{format_iso, parse_iso};
-use nc_core::{Device, ImpedanceSpec, Issue, Level, MetadataFile, SampleType, Session, StreamType, Table};
+use nc_core::{Calibration, Device, Issue, Level, MetadataFile, Session, StreamType};
 
 /// NWB file-level fields, resolved.
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -34,8 +37,6 @@ pub struct GroupPlan {
     pub description: String,
     pub location: String,
     pub device: String,
-    #[serde(skip)]
-    pub impedance: Option<ImpedanceSpec>,
 }
 
 /// One continuous signal to write.
@@ -46,10 +47,8 @@ pub struct SeriesPlan {
     pub source: String,
     pub name: String,
     pub description: String,
-    /// `Some(group)` for an `ElectricalSeries`.
-    pub electrode_group: Option<usize>,
-    /// First row of this series in the electrodes table (electrical only).
-    pub first_electrode: usize,
+    /// Electrodes-table row of each channel for an `ElectricalSeries`; `None` for a `TimeSeries`.
+    pub electrodes: Option<Vec<usize>>,
     pub unit: String,
     pub conversion: f64,
 }
@@ -77,7 +76,6 @@ pub struct SnippetPlan {
     /// Series names are `<name>_ch<channel>`.
     pub name: String,
     pub description: String,
-    pub electrode_group: usize,
     /// Multiplier from the stored snippet values to volts.
     pub conversion: f64,
     /// `(source channel, electrodes-table row)` for every channel with snippets.
@@ -101,11 +99,6 @@ pub struct NwbPlan {
     pub events: Vec<EventPlan>,
     pub tables: Vec<TablePlan>,
     pub snippets: Vec<SnippetPlan>,
-    /// Electrodes-table rows after those of the electrical series, for snippet channels whose
-    /// group has no electrical series: `(group index, channel name)`.
-    pub extra_electrodes: Vec<(usize, String)>,
-    /// Impedance in ohms per electrodes-table row (NaN = not measured); empty = no `imp` column.
-    pub impedance_ohms: Vec<f32>,
     /// Source items left out (by the metadata file).
     pub skipped: Vec<String>,
     pub issues: Vec<Issue>,
@@ -200,13 +193,13 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
         }
     }
 
-    // Devices and electrode groups
+    // Devices and electrode groups (from the session)
     plan.devices = sm.devices.clone();
-    for g in &meta.electrode_groups {
+    for g in &session.electrode_groups {
         let device = match &g.device {
             Some(d) => {
                 if !plan.devices.iter().any(|x| &x.name == d) {
-                    plan.devices.push(Device { name: d.clone(), description: "declared in the metadata file".into(), manufacturer: None, model: None });
+                    plan.devices.push(Device { name: d.clone(), description: format!("device of electrode group {}", g.name), manufacturer: None, model: None });
                 }
                 d.clone()
             }
@@ -218,17 +211,10 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
                 }
             },
         };
-        plan.groups.push(GroupPlan {
-            name: g.name.clone(),
-            description: g.description.clone(),
-            location: g.location.clone(),
-            device,
-            impedance: g.impedance.clone(),
-        });
+        plan.groups.push(GroupPlan { name: g.name.clone(), description: g.description.clone(), location: g.location.clone(), device });
     }
 
-    // Streams
-    let mut electrode_row = 0;
+    // Streams: electrical when declared so, or (undeclared) when every channel has an electrode
     for (i, rec) in session.recordings.iter().enumerate() {
         let info = rec.info();
         let spec = meta.stream(&info.name);
@@ -236,40 +222,36 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
             plan.skipped.push(format!("stream {}", info.name));
             continue;
         }
-        let kind = spec.kind.unwrap_or(StreamType::Timeseries);
-        let electrode_group = match (kind, &spec.electrode_group) {
-            (StreamType::Electrical, Some(g)) => match plan.groups.iter().position(|x| &x.name == g) {
-                Some(gi) => Some(gi),
-                None => {
-                    issues.push(Issue::error(format!("stream {}: electrode_group {g:?} is not declared under electrode_groups", info.name)));
-                    None
-                }
-            },
-            (StreamType::Electrical, None) => {
-                issues.push(Issue::error(format!("stream {}: electrical streams need an electrode_group", info.name)));
+        let rows = session.channel_electrodes(&info.name);
+        let complete = !rows.is_empty() && rows.iter().all(Option::is_some);
+        let electrical = match spec.kind {
+            Some(kind) => kind == StreamType::Electrical,
+            None => complete,
+        };
+        let electrodes = match (electrical, complete) {
+            (false, _) => None,
+            (true, true) => Some(rows.into_iter().flatten().collect()),
+            (true, false) => {
+                let missing = rows.iter().filter(|r| r.is_none()).count();
+                issues.push(Issue::error(format!(
+                    "stream {}: electrical, but {missing} of {} channels have no electrode; set streams.{}.electrode_group to a declared group",
+                    info.name,
+                    rows.len(),
+                    info.name
+                )));
                 None
             }
-            (StreamType::Timeseries, _) => None,
         };
-        let electrical = kind == StreamType::Electrical;
         if electrical && spec.unit.as_deref().is_some_and(|u| u != "volts" && u != "V" && u != "a.u.") {
             issues.push(Issue::warning(format!("stream {}: electrical series are stored in volts; use conversion to scale", info.name)));
         }
-        // TDT integer stores record a Synapse `Scale` (Milli, Micro, …) that TDT's own reader does not
-        // apply; without a conversion the stored units would be written as they are
-        let integer = !matches!(info.stored_as, SampleType::F32 | SampleType::F64);
-        if let Some(scale) = info.metadata.get("listing_scale").filter(|s| integer && s.as_str() != "Unity" && spec.conversion.is_none()) {
+        // Values not known to be in physical units: written as stored unless a conversion is set
+        if let (Calibration::Unknown { note }, None) = (&info.calibration, spec.conversion) {
             issues.push(Issue::warning(format!(
-                "stream {}: stored as {} with TDT scale {scale:?} and no conversion; values are written as stored. \
+                "stream {}: {note} and no conversion; values are written as stored. \
                  Set streams.{}.conversion (and unit) to the factor from stored units to the physical unit",
-                info.name,
-                info.stored_as.name(),
-                info.name
+                info.name, info.name
             )));
-        }
-        let first_electrode = electrode_row;
-        if electrical {
-            electrode_row += info.channel_count();
         }
         plan.series.push(SeriesPlan {
             recording: i,
@@ -282,8 +264,7 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
                     info.description.clone()
                 }
             }),
-            electrode_group,
-            first_electrode,
+            electrodes,
             unit: if electrical { "volts".into() } else { spec.unit.unwrap_or_else(|| "a.u.".into()) },
             conversion: spec.conversion.unwrap_or(1.0),
         });
@@ -315,54 +296,35 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
         plan.tables.push(TablePlan { table: i, name: spec.name.unwrap_or_else(|| safe_name(&t.name)), description: spec.description.unwrap_or_else(|| t.description.clone()) });
     }
 
-    // Snippets: one SpikeEventSeries per channel on the electrodes of the store's group
+    // Snippets: one SpikeEventSeries per channel, on that channel's electrode
     for (i, sn) in session.snippets.iter().enumerate() {
         let spec = meta.snippet(&sn.name);
         if spec.include == Some(false) {
             plan.skipped.push(format!("snippets {}", sn.name));
             continue;
         }
-        let Some(group) = spec.electrode_group.as_ref() else {
+        if sn.electrodes.is_empty() {
             plan.issues.push(Issue::warning(format!(
-                "snippets {} ({} waveforms) are not written: set snippets.{}.electrode_group (NWB spike waveforms belong to electrodes)",
+                "snippets {} ({} waveforms) have no electrodes and are not written: set snippets.{}.electrode_group to a declared group \
+                 (NWB spike waveforms belong to electrodes)",
                 sn.name,
                 sn.len(),
                 sn.name
             )));
             continue;
-        };
-        let Some(gi) = plan.groups.iter().position(|g| &g.name == group) else {
-            plan.issues.push(Issue::error(format!("snippets {}: electrode_group {group:?} is not declared under electrode_groups", sn.name)));
-            continue;
-        };
+        }
         if sn.unit != "V" && spec.conversion.is_none() {
             plan.issues.push(Issue::warning(format!(
                 "snippets {}: values are in {} and no conversion is set; set snippets.{}.conversion to the factor to volts",
                 sn.name, sn.unit, sn.name
             )));
         }
-        let mut channels: Vec<u16> = sn.channels.clone();
-        channels.sort_unstable();
-        channels.dedup();
-        // Channel c is the c-th electrode of the group's first electrical series, else a new row
-        let series = plan.series.iter().find(|s| s.electrode_group == Some(gi)).map(|s| (s.first_electrode, session.recordings[s.recording].info().channel_count()));
-        let mut rows = Vec::with_capacity(channels.len());
-        for c in channels {
-            let row = match series {
-                Some((first, n)) if c >= 1 && (c as usize) <= n => first + c as usize - 1,
-                Some((_, n)) => {
-                    plan.issues.push(Issue::error(format!(
-                        "snippets {}: channel {c} is outside the {n} electrodes of group {group:?}",
-                        sn.name
-                    )));
-                    continue;
-                }
-                None => {
-                    plan.extra_electrodes.push((gi, format!("{} {c}", sn.name)));
-                    electrode_row + plan.extra_electrodes.len() - 1
-                }
-            };
-            rows.push((c, row));
+        let mut rows = Vec::new();
+        for c in sn.channel_set() {
+            match sn.electrodes.get(&c) {
+                Some(&row) => rows.push((c, row)),
+                None => plan.issues.push(Issue::warning(format!("snippets {}: channel {c} has no electrode; its snippets are not written", sn.name))),
+            }
         }
         plan.snippets.push(SnippetPlan {
             snippet: i,
@@ -371,30 +333,9 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
             description: spec.description.unwrap_or_else(|| {
                 if sn.description.is_empty() { format!("{} spike snippets from the {} recording", sn.name, session.provenance.format) } else { sn.description.clone() }
             }),
-            electrode_group: gi,
             conversion: spec.conversion.unwrap_or(1.0),
             rows,
         });
-    }
-
-    // Electrode impedances, one per electrodes-table row
-    if plan.groups.iter().any(|g| g.impedance.is_some()) {
-        for s in &plan.series {
-            let Some(gi) = s.electrode_group else { continue };
-            let channels = session.recordings[s.recording].info().channel_count();
-            let values = match &plan.groups[gi].impedance {
-                None => vec![f32::NAN; channels],
-                Some(spec) => match session.tables.iter().find(|t| t.name == spec.table) {
-                    Some(t) => impedances(t, spec, channels),
-                    None => {
-                        plan.issues.push(Issue::warning(format!("electrode group {}: impedance table {:?} not found", plan.groups[gi].name, spec.table)));
-                        vec![f32::NAN; channels]
-                    }
-                },
-            };
-            plan.impedance_ohms.extend(values);
-        }
-        plan.impedance_ohms.extend(std::iter::repeat_n(f32::NAN, plan.extra_electrodes.len()));
     }
 
     // Names must be unique within their NWB group
@@ -413,43 +354,9 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
     plan
 }
 
-/// Impedance (ohms) of channels `1..=channels` from `table` columns `<prefix><n> (<unit>)`.
-fn impedances(table: &Table, spec: &ImpedanceSpec, channels: usize) -> Vec<f32> {
-    let prefix = spec.prefix.as_deref().unwrap_or("R");
-    (1..=channels)
-        .map(|n| {
-            let head = format!("{prefix}{n} (");
-            let Some((ci, col)) = table.columns.iter().enumerate().find(|(_, c)| c.starts_with(&head)) else { return f32::NAN };
-            let scale = if col.ends_with("(kOhm)") { 1e3 } else if col.ends_with("(MOhm)") { 1e6 } else { 1.0 };
-            let value = |r: &Vec<String>| r.get(ci).and_then(|v| v.parse::<f64>().ok()).filter(|v| *v >= 0.0);
-            let v = match spec.row {
-                Some(row) => table.rows.get(row).and_then(value),
-                None => table.rows.iter().rev().find_map(value),
-            };
-            v.map_or(f32::NAN, |v| (v * scale) as f32)
-        })
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_impedances_last_measured_row() {
-        let t = Table {
-            name: "Z".into(),
-            description: String::new(),
-            columns: vec!["TIME (S)".into(), "R1 (kOhm)".into(), "R2 (kOhm)".into()],
-            rows: vec![vec!["60".into(), "1.5".into(), "0.4".into()], vec!["64".into(), "-1.00".into(), "0.5".into()]],
-        };
-        let spec = ImpedanceSpec { table: "Z".into(), ..Default::default() };
-        let v = impedances(&t, &spec, 3);
-        assert_eq!(&v[..2], &[1500.0, 500.0]);
-        assert!(v[2].is_nan());
-        let first = impedances(&t, &ImpedanceSpec { row: Some(0), ..spec }, 2);
-        assert_eq!(first, vec![1500.0, 400.0]);
-    }
 
     #[test]
     fn test_names_and_zones() {

@@ -11,18 +11,31 @@ pub mod types;
 pub mod validate;
 
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub use mapping::{resolve, NwbPlan};
 
 use backend::zarr::ZarrBackend;
 use backend::Backend;
-use nc_core::{Error, Level, Result, Session};
+use nc_core::{Error, Level, MetadataFile, Result, Session};
 
 /// A fresh random identifier (UUID v4) for `NWBFile.identifier`.
 pub fn new_identifier() -> String {
     uuid::Uuid::new_v4().to_string()
+}
+
+/// The planning step in one call: merges `meta`'s electrode declarations into `session`
+/// ([`MetadataFile::apply`]), checks the session's invariants ([`Session::validate`]) and
+/// resolves the NWB plan ([`resolve`]). The plan's issues hold all three, in that order.
+pub fn plan(session: &mut Session, meta: &MetadataFile, new_identifier: impl FnOnce() -> String) -> NwbPlan {
+    let mut issues = meta.apply(session);
+    issues.extend(session.validate());
+    let mut plan = resolve(session, meta, new_identifier);
+    issues.append(&mut plan.issues);
+    plan.issues = issues;
+    plan
 }
 
 /// Chunk length along time for continuous data.
@@ -68,14 +81,42 @@ pub struct NwbOptions {
     pub gzip: Option<u32>,
     /// Chunk length along time for continuous data.
     pub chunks: ChunkPolicy,
+    /// Worker threads copying continuous data. Default: [`available_threads(0)`]; an app sharing
+    /// the machine with its UI would use `available_threads(1)`.
     pub threads: usize,
     pub overwrite: bool,
+    /// Set to `true` from any thread to stop the write; it then returns [`Error::Cancelled`] and
+    /// the store is left incomplete (no `/specifications`).
+    pub cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Default for NwbOptions {
     fn default() -> Self {
-        let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
-        Self { gzip: Some(1), chunks: ChunkPolicy::Seconds(1.0), threads, overwrite: false }
+        Self { gzip: Some(1), chunks: ChunkPolicy::Seconds(1.0), threads: available_threads(0), overwrite: false, cancel: None }
+    }
+}
+
+/// CPUs this process may use (`std::thread::available_parallelism`: honors CPU affinity and
+/// container quotas) minus `reserve`, at least 1. When the system cannot tell, 1: slow but never
+/// oversubscribed.
+pub fn available_threads(reserve: usize) -> usize {
+    available(std::thread::available_parallelism().ok().map(|n| n.get()), reserve)
+}
+
+fn available(cpus: Option<usize>, reserve: usize) -> usize {
+    cpus.map_or(1, |n| n.saturating_sub(reserve).max(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::available;
+
+    #[test]
+    fn test_available_threads() {
+        assert_eq!(available(Some(12), 0), 12);
+        assert_eq!(available(Some(12), 1), 11);
+        assert_eq!(available(Some(1), 1), 1, "never below one");
+        assert_eq!(available(None, 0), 1, "unknown CPU count falls back to one");
     }
 }
 
@@ -107,6 +148,9 @@ pub fn write(
     if plan.has_errors() {
         let msgs: Vec<&str> = plan.issues.iter().filter(|i| i.level == Level::Error).map(|i| i.message.as_str()).collect();
         return Err(Error::Unsupported(format!("the NWB plan has errors:\n  - {}", msgs.join("\n  - "))));
+    }
+    if options.cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+        return Err(Error::Cancelled);
     }
     let started = Instant::now();
     let b = ZarrBackend::create(dest, options.gzip, options.overwrite)?;
@@ -151,8 +195,9 @@ pub fn write(
                 std::thread::sleep(Duration::from_millis(500));
             }
         });
+        let cancel = options.cancel.as_deref();
         let r = plan.series.iter().try_for_each(|s| {
-            types::series::write_continuous(b, s, session.recordings[s.recording].as_ref(), options.chunks, options.threads, &done)
+            types::series::write_continuous(b, s, session.recordings[s.recording].as_ref(), options.chunks, options.threads, &done, cancel)
         });
         finished.store(true, Ordering::Relaxed);
         r

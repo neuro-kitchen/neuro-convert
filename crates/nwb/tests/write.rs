@@ -78,16 +78,17 @@ snippets:
 
 #[test]
 fn writes_small_nwb_zarr() {
-    let s = session();
+    let mut s = session();
     let meta = MetadataFile::parse(META).unwrap();
-    let plan = nwb::resolve(&s, &meta, || "test-id".into());
+    let plan = nwb::plan(&mut s, &meta, || "test-id".into());
     assert!(!plan.has_errors(), "{:?}", plan.issues);
+    assert_eq!(plan.series[0].electrodes, Some(vec![0, 1, 2]), "electrodes come from the session after apply");
     assert_eq!(plan.file.start_time, "2025-02-26T15:25:56-05:00");
     assert_eq!(plan.series.len(), 2);
     assert_eq!(plan.skipped, vec!["stream Skip".to_string()]);
 
     let dest = out_dir().join("small.nwb.zarr");
-    let options = NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: Some(1) };
+    let options = NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: Some(1), ..Default::default() };
     assert_eq!(plan.snippets.len(), 1);
     assert_eq!(plan.snippets[0].rows, vec![(1, 0), (2, 1), (3, 2)], "channel c is the group's c-th electrode");
     let summary = nwb::write(&s, &plan, &dest, &options, &|_| {}).unwrap();
@@ -190,10 +191,10 @@ fn float64_sources_stay_float64() {
     s.recordings.push(Arc::new(F64Recording { info, data: data.clone() }));
 
     let meta = MetadataFile::parse(META).unwrap();
-    let plan = nwb::resolve(&s, &meta, || "f64-id".into());
+    let plan = nwb::plan(&mut s, &meta, || "f64-id".into());
     assert!(!plan.has_errors(), "{:?}", plan.issues);
     let dest = out_dir().join("f64.nwb.zarr");
-    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: None }, &|_| {}).unwrap();
+    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: None, ..Default::default() }, &|_| {}).unwrap();
 
     let meta_json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(dest.join("acquisition/Precise/data/zarr.json")).unwrap()).unwrap();
@@ -208,21 +209,65 @@ fn float64_sources_stay_float64() {
 }
 
 #[test]
-fn scaled_integer_tdt_stores_without_conversion_are_flagged() {
+fn uncalibrated_streams_without_conversion_are_flagged() {
     let mut s = session();
     let template = MemoryRecording::new("MonA", vec![0.0; 100], 1, 24_414.0625, "a.u.").unwrap();
     let mut info = nc_core::Recording::info(&template).clone();
     info.stored_as = nc_core::SampleType::I16;
-    info.metadata.insert("listing_scale".into(), "Milli".into());
+    info.calibration = nc_core::Calibration::Unknown { note: "stored as int16 with TDT scale \"Milli\"".into() };
     s.recordings.push(Arc::new(F64Recording { info, data: vec![0.0; 100] }));
     let meta = MetadataFile::parse(META).unwrap();
-    let plan = nwb::resolve(&s, &meta, || "id".into());
+    let plan = nwb::plan(&mut s, &meta, || "id".into());
     assert!(plan.issues.iter().any(|i| i.message.contains("MonA") && i.message.contains("Milli")), "{:?}", plan.issues);
 
-    // Declaring the conversion clears it
+    // Declaring the conversion clears it (planning again on the same session: apply is idempotent)
     let with_conv = META.replace("  Skip: { include: false }\n", "  Skip: { include: false }\n  MonA: { conversion: 1.0e-3, unit: volts }\n");
-    let plan = nwb::resolve(&s, &MetadataFile::parse(&with_conv).unwrap(), || "id".into());
+    let plan = nwb::plan(&mut s, &MetadataFile::parse(&with_conv).unwrap(), || "id".into());
     assert!(!plan.issues.iter().any(|i| i.message.contains("MonA")), "{:?}", plan.issues);
+    assert_eq!(s.electrodes.len(), 3, "re-planning does not duplicate electrodes");
+}
+
+/// A reader that knows its probe: electrodes with positions, no `type` in the metadata file.
+#[test]
+fn reader_electrodes_make_electrical_series_with_positions() {
+    use nc_core::{ChannelRef, Electrode, ElectrodeGroup};
+    let mut s = Session::default();
+    s.metadata.start_time = Some("2025-02-26T15:25:56-05:00".into());
+    s.recordings.push(Arc::new(MemoryRecording::new("ap", (0..400).map(|v| v as f32).collect(), 2, 1000.0, "V").unwrap()));
+    s.electrode_groups.push(ElectrodeGroup { name: "shank0".into(), description: "probe shank".into(), location: "CA1".into(), device: None });
+    for c in 0..2 {
+        s.electrodes.push(Electrode {
+            name: format!("ap {c}"),
+            group: "shank0".into(),
+            channels: vec![ChannelRef { recording: "ap".into(), channel: c }],
+            position_um: Some([0.0, 20.0 * c as f32, 0.0]),
+            ..Default::default()
+        });
+    }
+    let meta = MetadataFile::parse("session: { description: probe test }\n").unwrap();
+    let plan = nwb::plan(&mut s, &meta, || "probe-id".into());
+    assert!(!plan.has_errors(), "{:?}", plan.issues);
+    assert_eq!((plan.series[0].electrodes.clone(), plan.series[0].unit.as_str()), (Some(vec![0, 1]), "volts"));
+
+    let dest = out_dir().join("probe.nwb.zarr");
+    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 1, gzip: None, ..Default::default() }, &|_| {}).unwrap();
+    let series: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("acquisition/ap/zarr.json")).unwrap()).unwrap();
+    assert_eq!(series["attributes"]["neurodata_type"], "ElectricalSeries");
+    let store = Arc::new(zarrs::filesystem::FilesystemStore::new(&dest).unwrap());
+    let rel_y = zarrs::array::Array::open(store, "/general/extracellular_ephys/electrodes/rel_y").unwrap();
+    assert_eq!(rel_y.retrieve_array_subset::<Vec<f32>>(&rel_y.subset_all()).unwrap(), vec![0.0, 20.0]);
+    assert!(nwb::validate::validate(&dest).unwrap().is_empty());
+
+    // Declaring the stream a plain time series overrides the reader's electrodes
+    let as_ts = MetadataFile::parse("session: { description: probe test }\nstreams:\n  ap: { type: timeseries }\n").unwrap();
+    assert_eq!(nwb::plan(&mut s, &as_ts, || "id".into()).series[0].electrodes, None);
+    // And electrical without electrodes is an error
+    let mut bare = Session::default();
+    bare.metadata.start_time = s.metadata.start_time.clone();
+    bare.recordings.push(Arc::new(MemoryRecording::new("ap", vec![0.0; 4], 2, 1000.0, "V").unwrap()));
+    let electrical = MetadataFile::parse("session: { description: d }\nstreams:\n  ap: { type: electrical }\n").unwrap();
+    let plan = nwb::plan(&mut bare, &electrical, || "id".into());
+    assert!(plan.issues.iter().any(|i| i.message.contains("2 of 2 channels have no electrode")), "{:?}", plan.issues);
 }
 
 #[test]
@@ -238,10 +283,10 @@ fn chunk_policy_parses_and_sizes_auto_chunks_by_bytes() {
     assert_eq!(ChunkPolicy::Auto.rows(100.0, 1, 2), 5_000_000);
 
     // An auto-chunked write: 3 × float32 → the whole 1000-sample series fits one chunk
-    let s = session();
-    let plan = nwb::resolve(&s, &MetadataFile::parse(META).unwrap(), || "auto-id".into());
+    let mut s = session();
+    let plan = nwb::plan(&mut s, &MetadataFile::parse(META).unwrap(), || "auto-id".into());
     let dest = out_dir().join("auto.nwb.zarr");
-    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: ChunkPolicy::Auto, gzip: None }, &|_| {}).unwrap();
+    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: ChunkPolicy::Auto, gzip: None, ..Default::default() }, &|_| {}).unwrap();
     let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("acquisition/EMG/data/zarr.json")).unwrap()).unwrap();
     assert_eq!(meta["chunk_grid"]["configuration"]["chunk_shape"], serde_json::json!([1000, 3]));
 }
