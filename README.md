@@ -17,19 +17,24 @@ sorts), `--only A,B` (load only these streams / stores).
 | Input | Versions |
 |---|---|
 | TDT block or tank | Synapse / OpenEx; TEV and SEV (v0–v3, hour files) streams, rawpacked, snips (+ `--sort` offline sorts), epocs, scalars, runtime notes, impedance CSVs; `--block` for tanks |
+| SpikeGLX run | Neuropixels 3A / 1.0 family / 2.0 AP, LF and sync (gains from the IMRO table, electrode positions from the geometry map); NI-DAQ analog + digital; `--block` for folders with several runs |
 
 | Output | Format |
 |---|---|
-| NWB 2.11.0 | Zarr v3 store in hdmf-zarr's layout (hdmf-zarr ≥ 0.14 / pynwb, DANDI), schema cached; continuous series, events, spike snippets + sorted units, electrodes, tables |
+| NWB 2.11.0 | Zarr v3 store in hdmf-zarr's layout (hdmf-zarr ≥ 0.14 / pynwb, DANDI), schema cached; continuous series (integers kept, gains as `conversion` / `channel_conversion`), events, spike snippets + sorted units, electrodes with positions, tables |
 
-Not yet: SpikeGLX, Open Ephys, Intan, NWB/HDF5.
+Not yet: Open Ephys, Intan, NWB/HDF5, SpikeGLX OneBox and sync alignment.
+
+Ctrl-C during `convert` stops cleanly and removes the partial store; every conversion is verified
+and leaves `<output>.report.json`.
 
 ## Metadata file
 The source files never say everything NWB needs (session description, subject species/age, time
 zone, electrode placement) nor how each stream should be exported. A YAML file supplies both; keys
 are the source's own names, so any lab's naming works. Start from
-[`metadata/session.example.yaml`](metadata/session.example.yaml); a real example is
-[`metadata/examples/tdt-15-25-33_meps.yaml`](metadata/examples/tdt-15-25-33_meps.yaml).
+[`metadata/session.example.yaml`](metadata/session.example.yaml); real examples are
+[`metadata/examples/tdt-15-25-33_meps.yaml`](metadata/examples/tdt-15-25-33_meps.yaml) and
+[`metadata/examples/spikeglx-ibl-imec_385_100s.yaml`](metadata/examples/spikeglx-ibl-imec_385_100s.yaml).
 `convert --dry-run` prints the resulting plan with errors (blocking) and DANDI warnings.
 
 ## Workspace
@@ -38,9 +43,11 @@ crates/base/          nc-base     errors, sample types, decoding, mmap, text, IS
 crates/core/          nc-core     the neutral model (Session, Recording, events, snippets, tables,
                                   metadata, provenance), the Reader trait, the metadata YAML
 crates/readers/tdt/   nc-tdt      TDT reader (tsq, tev streams, sev, epocs, snips, notes, tin, …)
+crates/readers/spikeglx/ nc-spikeglx  SpikeGLX reader (meta, bin, probe gains and geometry, files)
 crates/nwb/           nc-nwb      NWB writer: mapping (plan), types (one file per NWB type),
                                   backend (Zarr), validate; vendored schema in specs/
-crates/convert/       nc-convert  the API: reader registry + re-exports (used by CLI and app)
+crates/convert/       nc-convert  the API: reader registry, conversion Job (open → plan → write →
+                                  verify, progress, cancel), re-exports (used by CLI and app)
 crates/cli/           nc-cli      the `neuro-convert` command (clap)
 docs/                 format notes and the NWB mapping
 metadata/             metadata template and examples
@@ -59,6 +66,8 @@ uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector \
     tools/python/validate_nwb.py target/nwb-test/small.nwb.zarr --small
 cargo build --release && uv run --no-project --with tdt --with numpy \
     tools/python/compare_tdt.py data/15-25-33_meps
+uv run --no-project --with numpy --with probeinterface \
+    tools/python/compare_spikeglx.py data/ibl/imec_385_100s/imec_385_100s.ap.bin
 ```
-The real-block test reads `data/15-25-33_meps` (or `$NC_DATA_DIR/15-25-33_meps`) and skips when
-it is absent.
+Real-data tests read `data/15-25-33_meps` (TDT) and `data/ibl/imec_385_100s` (SpikeGLX) under
+`data/` or `$NC_DATA_DIR`, and skip when absent.

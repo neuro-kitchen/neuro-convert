@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use clap::Args;
 use nc_convert::core::{Level, MetadataFile, Session};
 use nc_convert::nwb::{self, NwbOptions, NwbPlan};
+use nc_convert::{CancelToken, Event, Job, Registry, Stage};
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -25,7 +26,7 @@ pub struct ConvertArgs {
     /// default, so series of any rate and channel count get similar-sized chunks)
     #[arg(long, default_value = "1")]
     chunk: nwb::ChunkPolicy,
-    /// Worker threads for copying data (default: all cores)
+    /// Worker threads for copying data (default: every CPU this process may use)
     #[arg(long)]
     threads: Option<usize>,
     /// Replace the output if it exists
@@ -39,13 +40,14 @@ pub struct ConvertArgs {
 }
 
 pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
-    let session = nc_convert::open(&a.input, &a.open.options())?;
+    let mut job = Job::open(&Registry::builtin(), &a.input, &a.open.options())?;
     let meta = match &a.metadata {
         Some(p) => MetadataFile::load(p)?,
         None => MetadataFile::default(),
     };
-    let plan = nwb::resolve(&session, &meta, nwb::new_identifier);
-    print_plan(&plan, &session);
+    job.plan(&meta);
+    let plan = job.current_plan().expect("just planned");
+    print_plan(plan, job.session());
     if a.dry_run {
         return Ok(());
     }
@@ -58,21 +60,38 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     if let Some(t) = a.threads {
         options.threads = t;
     }
-    println!("\nWriting {} ({} threads, {}) …", a.output.display(), options.threads, gzip.map_or("uncompressed".into(), |l| format!("gzip {l}")));
-    let summary = nwb::write(&session, &plan, &a.output, &options, &|p| {
-        let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 100.0 };
-        // Progress counts samples (all channels); series differ in sample size, so no MB/s
-        let rate = p.done as f64 / 1e6 / p.elapsed.as_secs_f64().max(1e-9);
-        print!("\r  {pct:5.1}%  {rate:7.1} M samples/s  {:5.0} s", p.elapsed.as_secs_f64());
-        let _ = std::io::stdout().flush();
-    })?;
-    println!("\nDone: {} series, {:.2} G samples in {:.1} s", summary.series, summary.samples as f64 / 1e9, summary.seconds);
+    // Ctrl-C stops the copy cleanly and removes the partial store
+    let cancel = CancelToken::new();
+    let on_signal = cancel.clone();
+    ctrlc::set_handler(move || on_signal.cancel())?;
 
-    // Conversion report next to the output
-    let report = serde_json::json!({ "summary": summary, "plan": plan, "provenance": session.provenance });
-    let report_path = a.output.with_extension("report.json");
-    std::fs::write(&report_path, serde_json::to_string_pretty(&report)?)?;
+    println!("\nWriting {} ({} threads, {}) …", a.output.display(), options.threads, gzip.map_or("uncompressed".into(), |l| format!("gzip {l}")));
+    let result = job.write(&a.output, &options, &cancel, &|e| match e {
+        Event::Progress(p) => {
+            let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 100.0 };
+            // Progress counts samples (all channels); series differ in sample size, so no MB/s
+            let rate = p.done as f64 / 1e6 / p.elapsed.as_secs_f64().max(1e-9);
+            print!("\r  {pct:5.1}%  {rate:7.1} M samples/s  {:5.0} s", p.elapsed.as_secs_f64());
+            let _ = std::io::stdout().flush();
+        }
+        Event::Stage(Stage::Verifying) => print!("\n  verifying the store …"),
+        Event::Stage(_) => {}
+    });
+    let report = match result {
+        Err(nc_convert::Error::Cancelled) => anyhow::bail!("\ncancelled; the partial output was removed"),
+        r => r?,
+    };
+    let s = &report.summary;
+    println!("\nDone: {} series, {:.2} G samples in {:.1} s", s.series, s.samples as f64 / 1e9, s.seconds);
+    for i in &report.verification {
+        println!("{} {}", if i.level == Level::Error { "ERROR:  " } else { "warning:" }, i.message);
+    }
+    let report_path = report.default_path();
+    report.save(&report_path)?;
     println!("Report: {}", report_path.display());
+    if report.has_errors() {
+        anyhow::bail!("the written store failed verification (see above)");
+    }
     Ok(())
 }
 
@@ -84,11 +103,12 @@ fn print_plan(plan: &NwbPlan, session: &Session) {
     println!("description:  {}", f.description);
     println!("subject:      {} ({})", plan.subject.id.as_deref().unwrap_or("?"), plan.subject.species.as_deref().unwrap_or("species?"));
     for g in &plan.groups {
-        println!("electrodes:   group {} at {} on {}", g.name, g.location, g.device);
+        let n = session.electrodes.iter().filter(|e| e.group == g.name).count();
+        println!("electrodes:   group {} at {} on {} ({n} electrodes)", g.name, g.location, g.device);
     }
     for s in &plan.series {
         let i = session.recordings[s.recording].info();
-        let kind = if s.electrode_group.is_some() { "ElectricalSeries" } else { "TimeSeries" };
+        let kind = if s.electrodes.is_some() { "ElectricalSeries" } else { "TimeSeries" };
         println!("acquisition/{:8} ← {:6} {kind:16} {:>3} ch  {:>10.1} Hz  {}", s.name, s.source, i.channel_count(), i.sample_rate, s.unit);
     }
     for e in &plan.events {
