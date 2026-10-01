@@ -4,7 +4,7 @@
 //! `MetadataFile::apply`); the metadata file here only decides naming, units and inclusion.
 
 use nc_base::time::{format_iso, parse_iso};
-use nc_core::{Calibration, Device, Issue, Level, MetadataFile, Session, StreamType};
+use nc_core::{Calibration, Device, Issue, Level, MetadataFile, Session, StreamType, Target};
 
 /// NWB file-level fields, resolved.
 #[derive(Debug, Clone, Default, serde::Serialize)]
@@ -127,6 +127,10 @@ fn valid_zone(z: &str) -> bool {
     z == "Z" || (z.len() == 6 && (z.starts_with('+') || z.starts_with('-')) && z.as_bytes()[3] == b':')
 }
 
+fn field(path: &str) -> Target {
+    Target::Field(path.into())
+}
+
 pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOnce() -> String) -> NwbPlan {
     let mut plan = NwbPlan::default();
     let issues = &mut plan.issues;
@@ -136,31 +140,36 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
     // File fields
     plan.file.description = ms.description.clone().unwrap_or_default();
     if plan.file.description.trim().is_empty() {
-        issues.push(Issue::error("session.description is required (a sentence describing the session)"));
+        issues.push(Issue::error("session.description is required (a sentence describing the session)").at(field("session.description")));
     }
     plan.file.identifier = ms.identifier.clone().unwrap_or_else(new_identifier);
     plan.file.start_time = match (&ms.start_time, &sm.start_time) {
         (Some(t), _) if has_zone(t) && parse_iso(t).is_some() => t.clone(),
+        // A local time and a separate zone (what the app's date picker and zone list produce)
+        (Some(t), _) if ms.timezone.as_deref().is_some_and(valid_zone) && parse_iso(t).is_some() => {
+            format!("{}{}", parse_iso(t).map_or_else(|| t.clone(), format_iso), ms.timezone.as_deref().unwrap_or_default())
+        }
         (Some(t), _) => {
-            issues.push(Issue::error(format!("session.start_time {t:?} needs a time zone, e.g. 2025-02-26T15:25:56-05:00")));
+            issues.push(Issue::error(format!("session.start_time {t:?} needs a time zone, e.g. 2025-02-26T15:25:56-05:00")).at(field("session.start_time")));
             t.clone()
         }
         (None, Some(rec)) if has_zone(rec) => rec.clone(),
         (None, Some(rec)) => match &ms.timezone {
             Some(z) if valid_zone(z) => format!("{}{z}", parse_iso(rec).map_or_else(|| rec.clone(), format_iso)),
             Some(z) => {
-                issues.push(Issue::error(format!("session.timezone {z:?} must look like -05:00, +01:00 or Z")));
+                issues.push(Issue::error(format!("session.timezone {z:?} must look like -05:00, +01:00 or Z")).at(field("session.timezone")));
                 rec.clone()
             }
             None => {
-                issues.push(Issue::error(format!(
-                    "the recorded start time {rec} has no time zone: set session.timezone (e.g. -05:00) or session.start_time"
-                )));
+                issues.push(
+                    Issue::error(format!("the recorded start time {rec} has no time zone: set session.timezone (e.g. -05:00) or session.start_time"))
+                        .at(field("session.timezone")),
+                );
                 rec.clone()
             }
         },
         (None, None) => {
-            issues.push(Issue::error("no start time recorded: set session.start_time"));
+            issues.push(Issue::error("no start time recorded: set session.start_time").at(field("session.start_time")));
             String::new()
         }
     };
@@ -182,15 +191,13 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
         description: s.description.clone().or_else(|| sm.subject.description.clone()),
     };
     if plan.subject.species.is_none() {
-        issues.push(Issue::warning("subject.species is missing (required by DANDI)"));
+        issues.push(Issue::warning("subject.species is missing (required by DANDI)").at(field("subject.species")).dandi());
     }
     if plan.subject.age.is_none() {
-        issues.push(Issue::warning("subject.age is missing (required by DANDI, ISO 8601 e.g. P90D)"));
+        issues.push(Issue::warning("subject.age is missing (required by DANDI, ISO 8601 e.g. P90D)").at(field("subject.age")).dandi());
     }
-    if let Some(sex) = &plan.subject.sex {
-        if !["M", "F", "U", "O"].contains(&sex.as_str()) {
-            issues.push(Issue::warning(format!("subject.sex {sex:?} should be M, F, U or O")));
-        }
+    if let Some(sex) = plan.subject.sex.as_ref().filter(|s| !["M", "F", "U", "O"].contains(&s.as_str())) {
+        issues.push(Issue::warning(format!("subject.sex {sex:?} should be M, F, U or O")).at(field("subject.sex")).dandi());
     }
 
     // Devices and electrode groups (from the session)
@@ -233,25 +240,31 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
             (true, true) => Some(rows.into_iter().flatten().collect()),
             (true, false) => {
                 let missing = rows.iter().filter(|r| r.is_none()).count();
-                issues.push(Issue::error(format!(
-                    "stream {}: electrical, but {missing} of {} channels have no electrode; set streams.{}.electrode_group to a declared group",
-                    info.name,
-                    rows.len(),
-                    info.name
-                )));
+                issues.push(
+                    Issue::error(format!(
+                        "stream {}: electrical, but {missing} of {} channels have no electrode; set streams.{}.electrode_group to a declared group",
+                        info.name,
+                        rows.len(),
+                        info.name
+                    ))
+                    .at(Target::Stream(info.name.clone())),
+                );
                 None
             }
         };
         if electrical && spec.unit.as_deref().is_some_and(|u| u != "volts" && u != "V" && u != "a.u.") {
-            issues.push(Issue::warning(format!("stream {}: electrical series are stored in volts; use conversion to scale", info.name)));
+            issues.push(Issue::warning(format!("stream {}: electrical series are stored in volts; use conversion to scale", info.name)).at(Target::Stream(info.name.clone())));
         }
         // Values not known to be in physical units: written as stored unless a conversion is set
         if let (Calibration::Unknown { note }, None) = (&info.calibration, spec.conversion) {
-            issues.push(Issue::warning(format!(
-                "stream {}: {note} and no conversion; values are written as stored. \
-                 Set streams.{}.conversion (and unit) to the factor from stored units to the physical unit",
-                info.name, info.name
-            )));
+            issues.push(
+                Issue::warning(format!(
+                    "stream {}: {note} and no conversion; values are written as stored. \
+                     Set streams.{}.conversion (and unit) to the factor from stored units to the physical unit",
+                    info.name, info.name
+                ))
+                .at(Target::Stream(info.name.clone())),
+            );
         }
         plan.series.push(SeriesPlan {
             recording: i,
@@ -304,26 +317,32 @@ pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOn
             continue;
         }
         if sn.electrodes.is_empty() {
-            plan.issues.push(Issue::warning(format!(
-                "snippets {} ({} waveforms) have no electrodes and are not written: set snippets.{}.electrode_group to a declared group \
-                 (NWB spike waveforms belong to electrodes)",
-                sn.name,
-                sn.len(),
-                sn.name
-            )));
+            plan.issues.push(
+                Issue::warning(format!(
+                    "snippets {} ({} waveforms) have no electrodes and are not written: set snippets.{}.electrode_group to a declared group \
+                     (NWB spike waveforms belong to electrodes)",
+                    sn.name,
+                    sn.len(),
+                    sn.name
+                ))
+                .at(Target::Snippet(sn.name.clone())),
+            );
             continue;
         }
         if sn.unit != "V" && spec.conversion.is_none() {
-            plan.issues.push(Issue::warning(format!(
-                "snippets {}: values are in {} and no conversion is set; set snippets.{}.conversion to the factor to volts",
-                sn.name, sn.unit, sn.name
-            )));
+            plan.issues.push(
+                Issue::warning(format!(
+                    "snippets {}: values are in {} and no conversion is set; set snippets.{}.conversion to the factor to volts",
+                    sn.name, sn.unit, sn.name
+                ))
+                .at(Target::Snippet(sn.name.clone())),
+            );
         }
         let mut rows = Vec::new();
         for c in sn.channel_set() {
             match sn.electrodes.get(&c) {
                 Some(&row) => rows.push((c, row)),
-                None => plan.issues.push(Issue::warning(format!("snippets {}: channel {c} has no electrode; its snippets are not written", sn.name))),
+                None => plan.issues.push(Issue::warning(format!("snippets {}: channel {c} has no electrode; its snippets are not written", sn.name)).at(Target::Snippet(sn.name.clone()))),
             }
         }
         plan.snippets.push(SnippetPlan {
@@ -367,5 +386,32 @@ mod tests {
         assert!(has_zone("2025-02-26T15:25:56Z"));
         assert!(!has_zone("2025-02-26T15:25:56"));
         assert!(valid_zone("-05:00") && valid_zone("Z") && !valid_zone("EST"));
+    }
+
+    #[test]
+    fn test_issues_point_at_what_fixes_them() {
+        use nc_core::{MemoryRecording, StreamSpec};
+        let mut s = Session::default();
+        s.metadata.start_time = Some("2025-02-26T15:25:56".into());
+        s.recordings.push(std::sync::Arc::new(MemoryRecording::new("ap", vec![0.0; 4], 2, 1000.0, "V").unwrap()));
+        let mut meta = MetadataFile::default();
+        meta.streams.insert("ap".into(), StreamSpec { kind: Some(StreamType::Electrical), ..Default::default() });
+        let plan = resolve(&s, &meta, || "id".into());
+        let targets: Vec<(Option<Target>, bool)> = plan.issues.iter().map(|i| (i.target.clone(), i.dandi)).collect();
+        for t in [field("session.description"), field("session.timezone"), Target::Stream("ap".into())] {
+            assert!(targets.contains(&(Some(t.clone()), false)), "{t:?} in {targets:?}");
+        }
+        assert!(targets.contains(&(Some(field("subject.species")), true)));
+        assert!(plan.issues.iter().all(|i| i.target.is_some()), "{:?}", plan.issues);
+    }
+
+    #[test]
+    fn test_local_start_time_takes_the_zone() {
+        let mut meta = MetadataFile::default();
+        meta.session.start_time = Some("2025-02-26T16:00:00".into());
+        meta.session.timezone = Some("-05:00".into());
+        let plan = resolve(&Session::default(), &meta, || "id".into());
+        assert!(plan.file.start_time.starts_with("2025-02-26T16:00:00") && plan.file.start_time.ends_with("-05:00"), "{}", plan.file.start_time);
+        assert!(!plan.issues.iter().any(|i| i.target == Some(field("session.start_time"))));
     }
 }
