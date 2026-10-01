@@ -1,9 +1,4 @@
-//! User-supplied metadata: loaded from YAML, merged over what the input read, and checked by
-//! each output for the fields it requires.
-
-pub mod file;
-
-pub use file::{ElectrodeGroupSpec, ImpedanceSpec, ItemSpec, MetadataFile, SnippetSpec, StreamSpec, StreamType};
+//! Problems found while checking a session or planning an output.
 
 /// Severity of a problem found while planning an output.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]

@@ -3,8 +3,7 @@ use std::ops::Range;
 
 use serde::{Deserialize, Serialize};
 
-use super::sample::{MemoryOrder, SampleType};
-use crate::error::{Error, Result};
+use nc_base::{Error, MemoryOrder, Result, SampleType};
 
 /// Name and scaling of one stored channel: `value = stored * gain + offset`, in `unit`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

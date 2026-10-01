@@ -1,0 +1,11 @@
+[package]
+name = "nc-core"
+description = "neuro-convert data model: the neutral Session every reader produces and every writer consumes"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nc-base.workspace = true
+serde.workspace = true
+serde_yaml_ng.workspace = true
