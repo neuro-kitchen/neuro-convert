@@ -4,7 +4,7 @@
 //! source recording (channel-major), transpose it to NWB's `[time, channel]` layout and write
 //! it. Memory stays at a few chunks regardless of recording length.
 
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use serde_json::json;
@@ -13,9 +13,44 @@ use super::{attrs, typed_with};
 use crate::backend::{Attrs, Backend};
 use crate::mapping::{EventPlan, SeriesPlan};
 use crate::types::electrodes::TABLE_PATH;
-use nc_core::{Error, EventSeries, Recording, Result, SampleType};
+use nc_core::{Error, EventSeries, Recording, RecordingInfo, Result, SampleType};
 
-/// Writes a continuous series; `done` counts samples written (all channels) for progress.
+/// How a series' samples are stored: the dataset type and the factors that bring them to `unit`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Storage {
+    pub ty: SampleType,
+    /// `conversion` attribute of `data`.
+    pub conversion: f64,
+    /// Per-channel factors (`ElectricalSeries.channel_conversion`), applied on top of `conversion`.
+    pub channel_conversion: Option<Vec<f32>>,
+    /// Copy `read_stored` bytes (`true`) or scaled `read` values as float32 (`false`).
+    pub native: bool,
+}
+
+impl Storage {
+    /// Sources that serve their stored bytes keep them when the channel scaling can be expressed
+    /// in NWB: integers (half the size of float32 or less) and float64 (no precision lost), with a
+    /// shared gain folded into `conversion`, or per-channel gains as `channel_conversion`
+    /// (electrical series only). Everything else is written as scaled float32.
+    pub fn choose(info: &RecordingInfo, electrical: bool, conversion: f64, serves_stored: bool) -> Self {
+        let float32 = Storage { ty: SampleType::F32, conversion, channel_conversion: None, native: false };
+        if info.stored_as == SampleType::F32 || !serves_stored || info.channels.is_empty() || info.channels.iter().any(|c| c.offset != 0.0) {
+            return float32;
+        }
+        let g = info.channels[0].gain;
+        if info.channels.iter().all(|c| c.gain == g) {
+            return Storage { ty: info.stored_as, conversion: conversion * g, channel_conversion: None, native: true };
+        }
+        if electrical {
+            let gains = info.channels.iter().map(|c| c.gain as f32).collect();
+            return Storage { ty: info.stored_as, conversion, channel_conversion: Some(gains), native: true };
+        }
+        float32
+    }
+}
+
+/// Writes a continuous series; `done` counts samples written (all channels) for progress, and
+/// `cancel` (when set) stops the copy between chunks.
 pub fn write_continuous(
     b: &dyn Backend,
     plan: &SeriesPlan,
@@ -23,40 +58,42 @@ pub fn write_continuous(
     chunks: crate::ChunkPolicy,
     threads: usize,
     done: &AtomicU64,
+    cancel: Option<&AtomicBool>,
 ) -> Result<()> {
     let info = rec.info();
     let path = format!("/acquisition/{}", plan.name);
-    let neurodata_type = if plan.electrode_group.is_some() { "ElectricalSeries" } else { "TimeSeries" };
+    let electrical = plan.electrodes.is_some();
+    let neurodata_type = if electrical { "ElectricalSeries" } else { "TimeSeries" };
     b.group(&path, typed_with("core", neurodata_type, &[("description", json!(plan.description)), ("comments", json!("no comments"))]))?;
 
     let (rows, cols) = (info.samples, info.channel_count() as u64);
+    let storage = Storage::choose(info, electrical, plan.conversion, rec.read_stored(&[], 0..0, &mut []).unwrap_or(false));
     let data_attrs = attrs(&[
         ("unit", json!(plan.unit)),
-        ("conversion", json!(plan.conversion)),
+        ("conversion", json!(storage.conversion)),
         ("offset", json!(0.0)),
         ("resolution", json!(-1.0)),
     ]);
-    let (shape, dims): (Vec<u64>, Vec<&str>) = if plan.electrode_group.is_some() {
+    let (shape, dims): (Vec<u64>, Vec<&str>) = if electrical {
         (vec![rows, cols], vec!["num_times", "num_channels"])
     } else if cols == 1 {
         (vec![rows], vec!["num_times"])
     } else {
         (vec![rows, cols], vec!["num_times", "num_DIM2"])
     };
-    // Unscaled sources keep their stored type: integers (half the size of float32; `conversion`
-    // scales) and float64 (no precision lost); everything else is written as float32
-    let native = info.stored_as != SampleType::F32
-        && info.channels.iter().all(|c| c.gain == 1.0 && c.offset == 0.0)
-        && rec.read_stored(&[], 0..0, &mut []).unwrap_or(false);
-    let ty = if native { info.stored_as } else { SampleType::F32 };
+    let (native, ty) = (storage.native, storage.ty);
     let chunk = chunks.rows(info.sample_rate, cols as usize, ty.bytes());
     let sink = b.stream(&format!("{path}/data"), &shape, chunk, ty, &dims, data_attrs)?;
 
-    if let Some(_group) = plan.electrode_group {
-        let region: Vec<i64> = (plan.first_electrode as i64..(plan.first_electrode as u64 + cols) as i64).collect();
+    if let Some(rows) = &plan.electrodes {
+        let region: Vec<i64> = rows.iter().map(|&r| r as i64).collect();
         let reference = json!({ "_REFERENCE": { "source": ".", "path": TABLE_PATH } });
         let a = typed_with("hdmf-common", "DynamicTableRegion", &[("description", json!("electrodes of this series")), ("table", reference)]);
         b.i64s(&format!("{path}/electrodes"), &region, "num_rows", a)?;
+    }
+    if let Some(factors) = &storage.channel_conversion {
+        let a = attrs(&[("axis", json!(1))]);
+        b.f32s(&format!("{path}/channel_conversion"), factors, "num_channels", a)?;
     }
     b.f64_scalar(&format!("{path}/starting_time"), info.start_time, attrs(&[("rate", json!(info.sample_rate)), ("unit", json!("seconds"))]))?;
 
@@ -73,6 +110,10 @@ pub fn write_continuous(
                 loop {
                     let k = next.fetch_add(1, Ordering::Relaxed);
                     if k >= chunks || failed.lock().unwrap().is_some() {
+                        break;
+                    }
+                    if cancel.is_some_and(|c| c.load(Ordering::Relaxed)) {
+                        *failed.lock().unwrap() = Some(Error::Cancelled);
                         break;
                     }
                     let (s0, s1) = (k * chunk, ((k + 1) * chunk).min(rows));
@@ -158,7 +199,27 @@ pub fn write_events(b: &dyn Backend, plan: &EventPlan, e: &EventSeries) -> Resul
 
 #[cfg(test)]
 mod tests {
-    use super::regular_rate;
+    use super::{regular_rate, Storage};
+    use nc_core::{ChannelInfo, MemoryRecording, Recording, SampleType};
+
+    #[test]
+    fn test_storage_choice() {
+        let mut info = MemoryRecording::new("r", vec![0.0; 4], 2, 1.0, "V").unwrap().info().clone();
+        info.stored_as = SampleType::I16;
+        info.channels = vec![ChannelInfo { gain: 2.0, ..ChannelInfo::unity("a") }, ChannelInfo { gain: 2.0, ..ChannelInfo::unity("b") }];
+        // Shared gain: int16 kept, gain folded into conversion
+        let s = Storage::choose(&info, false, 0.5, true);
+        assert_eq!((s.ty, s.conversion, s.native, s.channel_conversion), (SampleType::I16, 1.0, true, None));
+        // Per-channel gains: channel_conversion on electrical series, float32 otherwise
+        info.channels[1].gain = 4.0;
+        let e = Storage::choose(&info, true, 1.0, true);
+        assert_eq!((e.ty, e.conversion, e.channel_conversion), (SampleType::I16, 1.0, Some(vec![2.0, 4.0])));
+        assert_eq!(Storage::choose(&info, false, 1.0, true).ty, SampleType::F32);
+        // No stored bytes, or an offset: float32
+        assert!(!Storage::choose(&info, true, 1.0, false).native);
+        info.channels[0].offset = 1.0;
+        assert!(!Storage::choose(&info, true, 1.0, true).native);
+    }
 
     #[test]
     fn test_regular_rate() {
