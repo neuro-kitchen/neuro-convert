@@ -34,10 +34,10 @@ pub mod validate;
 
 pub use electrodes::{ChannelRef, Electrode, ElectrodeGroup};
 pub use events::EventSeries;
-pub use issue::{Issue, Level};
+pub use issue::{Issue, Level, Target};
 pub use memory::MemoryRecording;
 pub use metadata::{Device, SessionMetadata, Subject};
-pub use metadata_file::{ElectrodeGroupSpec, ImpedanceSpec, ItemSpec, MetadataFile, SnippetSpec, StreamSpec, StreamType};
+pub use metadata_file::{ElectrodeGroupSpec, ImpedanceSpec, ItemKind, ItemSpec, MetadataFile, SnippetSpec, StreamSpec, StreamType};
 pub use nc_base::{Error, MemoryOrder, Result, SampleType};
 pub use options::OpenOptions;
 pub use provenance::{Provenance, SourceFile};
