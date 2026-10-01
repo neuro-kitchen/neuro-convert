@@ -685,18 +685,61 @@ dependencies = [
 ]
 
 [[package]]
-name = "neuro-convert"
+name = "nc-base"
+version = "0.1.0"
+dependencies = [
+ "memmap2",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
+name = "nc-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "memmap2",
+ "nc-convert",
+ "serde_json",
+]
+
+[[package]]
+name = "nc-convert"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "nc-core",
+ "nc-nwb",
+ "nc-tdt",
+]
+
+[[package]]
+name = "nc-core"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "serde",
+ "serde_yaml_ng",
+]
+
+[[package]]
+name = "nc-nwb"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "nc-core",
  "serde",
  "serde_json",
- "serde_yaml_ng",
- "thiserror",
  "uuid",
  "zarrs",
+]
+
+[[package]]
+name = "nc-tdt"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "nc-core",
  "zip",
 ]
 
