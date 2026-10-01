@@ -1,5 +1,6 @@
 .worktrees
-data
+# Local test recordings (large; see README "Tests")
+/data/
 .env
 .knowledge
 .tasks

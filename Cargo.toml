@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/base", "crates/core", "crates/readers/*", "crates/nwb", "crates/convert", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/neuro-kitchen/neuro-convert"
+
+[workspace.dependencies]
+# Workspace crates
+nc-base = { path = "crates/base" }
+nc-core = { path = "crates/core" }
+nc-tdt = { path = "crates/readers/tdt" }
+nc-nwb = { path = "crates/nwb" }
+nc-convert = { path = "crates/convert", default-features = false }
+# External
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+memmap2 = "0.9.11"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_yaml_ng = "0.10.0"
+thiserror = "2.0.21"
+uuid = { version = "1.26.1", features = ["v4"] }
+zarrs = { version = "0.23.14", default-features = false, features = ["filesystem", "gzip"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
