@@ -13,7 +13,7 @@ use super::notes::synapse::StoreDescription;
 use super::tsq::{session_time, StoreIndex};
 use nc_base::codec::decode_into;
 use nc_base::mapped::MappedFile;
-use nc_core::{check_read, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
+use nc_core::{check_read, Calibration, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
 
 pub struct TdtStream {
     info: RecordingInfo,
@@ -59,7 +59,6 @@ impl TdtStream {
         let first = store.first_timestamp.values().copied().fold(f64::INFINITY, f64::min);
         let mut metadata = BTreeMap::new();
         metadata.insert("tdt_store".into(), store.name.clone());
-        metadata.insert("tdt_storage".into(), "tev".into());
         metadata.insert("tdt_evtype".into(), format!("{:#x}", store.evtype));
         if store.evtype & codes::EVTYPE_UCF != 0 {
             metadata.insert("tdt_unscaled".into(), "true".into());
@@ -75,6 +74,14 @@ impl TdtStream {
             }
         }
 
+        // Synapse float streams hold volts ("Unity" scale); integer stores are raw counts. Their
+        // listed `Scale` (Milli, Micro, …) is not applied by TDT's own reader and is not a
+        // trustworthy factor, so the physical scale is left to the user's metadata.
+        let float = ty == SampleType::F32 || ty == SampleType::F64;
+        let calibration = match description.and_then(|d| d.properties.get("Scale")).filter(|s| !float && s.as_str() != "Unity") {
+            Some(scale) => Calibration::Unknown { note: format!("stored as {} with TDT scale {scale:?}", ty.name()) },
+            None => Calibration::Known,
+        };
         let info = RecordingInfo {
             name: store.name.clone(),
             description: desc,
@@ -82,11 +89,12 @@ impl TdtStream {
             samples: per_channel as u64 * samples_per_packet,
             sample_rate: store.frequency,
             start_time: if first.is_finite() { session_time(first, block_start).max(0.0) } else { 0.0 },
-            // Synapse float streams hold volts ("Unity" scale); integer stores are raw counts
-            unit: if ty == SampleType::F32 || ty == SampleType::F64 { "V".into() } else { "a.u.".into() },
+            unit: if float { "V".into() } else { "a.u.".into() },
+            calibration,
             kind: SignalKind::Other,
             stored_as: ty,
             order: MemoryOrder::Packets,
+            storage: "tev".into(),
             metadata,
         };
         Ok(Self { info, tev, packets, samples_per_packet })

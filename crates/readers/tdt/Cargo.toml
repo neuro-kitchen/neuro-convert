@@ -9,3 +9,6 @@ license.workspace = true
 nc-base.workspace = true
 nc-core.workspace = true
 zip.workspace = true
+
+[dev-dependencies]
+nc-core = { workspace = true, features = ["testkit"] }
