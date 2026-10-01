@@ -1,5 +1,5 @@
 .worktrees
-playground/data/
+data
 .env
 .knowledge
 .tasks
