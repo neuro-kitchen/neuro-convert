@@ -1,4 +1,3 @@
-#[cfg(feature = "nwb")]
 pub mod convert;
 pub mod formats;
 pub mod inspect;
@@ -12,10 +11,17 @@ pub struct OpenArgs {
     /// Offline spike sort to apply to snippets (TDT: folder name under sort/)
     #[arg(long)]
     pub sort: Option<String>,
+    /// Only load these streams / stores (by source name; repeat or comma-separate)
+    #[arg(long, value_delimiter = ',')]
+    pub only: Vec<String>,
 }
 
 impl OpenArgs {
-    pub fn options(&self) -> neuro_convert::OpenOptions {
-        neuro_convert::OpenOptions { block: self.block.clone(), sort: self.sort.clone(), ..Default::default() }
+    pub fn options(&self) -> nc_convert::OpenOptions {
+        nc_convert::OpenOptions {
+            block: self.block.clone(),
+            sort: self.sort.clone(),
+            only: (!self.only.is_empty()).then(|| self.only.clone()),
+        }
     }
 }

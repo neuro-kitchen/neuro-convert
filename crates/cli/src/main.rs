@@ -31,10 +31,8 @@ enum Command {
         open: commands::OpenArgs,
     },
     /// Convert a recording to NWB (Zarr), using a metadata file for what the source lacks
-    #[cfg(feature = "nwb")]
     Convert(commands::convert::ConvertArgs),
     /// Check an NWB-Zarr store's structure (references, lengths, required fields)
-    #[cfg(feature = "nwb")]
     Validate {
         /// Store to check (`.nwb.zarr`)
         path: PathBuf,
@@ -46,9 +44,7 @@ fn main() -> anyhow::Result<()> {
         Command::Formats => commands::formats::run(),
         Command::Inspect { path, read_sec, json: true, open } => commands::inspect::json(&path, read_sec, &open.options()),
         Command::Inspect { path, read_sec, json: false, open } => commands::inspect::run(&path, read_sec, &open.options()),
-        #[cfg(feature = "nwb")]
         Command::Convert(args) => commands::convert::run(&args),
-        #[cfg(feature = "nwb")]
         Command::Validate { path } => commands::convert::validate(&path),
     }
 }
