@@ -1,4 +1,4 @@
-# Metadata for the SpikeGLX file data/ibl/imec_385_100s (IBL, Neuropixels 3A, 100 s).
+# Metadata for the SpikeGLX file data/raw/spikeglx/imec_385_100s (IBL, Neuropixels 3A, 100 s).
 # Placeholders are marked; replace them before publishing.
 #
 # No stream "type" is needed: the reader supplies the probe's electrodes, so imec0.ap is written

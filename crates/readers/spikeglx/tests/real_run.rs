@@ -1,7 +1,7 @@
 //! The SpikeGLX reader on a real Neuropixels 3A AP file (IBL `imec_385_100s`: 384 AP + 1 sync
 //! channel, 30 kHz, 100 s). Skipped when the file is not on disk (2.3 GB, not committed).
 //!
-//! Looked up as `<data>/ibl/imec_385_100s`, where `<data>` is `$NC_DATA_DIR` or the workspace's
+//! Looked up as `<data>/raw/spikeglx/imec_385_100s`, where `<data>` is `$NC_DATA_DIR` or the workspace's
 //! git-ignored `data/` folder. Expected values are cross-checked with SpikeGLX's own conversion
 //! (`readSGLX.py`) and probeinterface by `tools/python/compare_spikeglx.py`.
 
@@ -16,7 +16,7 @@ fn data_dir() -> PathBuf {
 
 #[test]
 fn reads_ibl_neuropixels_3a() {
-    let path = data_dir().join("ibl/imec_385_100s");
+    let path = data_dir().join("raw/spikeglx/imec_385_100s");
     if !path.exists() {
         eprintln!("skipped: {} not found (set NC_DATA_DIR)", path.display());
         return;
