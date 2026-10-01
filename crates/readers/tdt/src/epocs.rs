@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 use super::codes::StoreKind;
 use super::notes::synapse::{clock_seconds, StoreDescription, SynapseNotes};
 use super::tsq::{session_time, store_name, StoreIndex};
-use crate::model::EventSeries;
+use nc_core::EventSeries;
 
 /// Builds epoc series (onsets paired with their offset stores) and scalar series.
 pub fn build(
@@ -152,9 +152,9 @@ fn scalars(s: &StoreIndex, block_start: f64, description: Option<String>) -> Eve
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::inputs::tdt::codes;
-    use crate::inputs::tdt::tsq::tests::record;
-    use crate::inputs::tdt::tsq::TsqIndex;
+    use crate::codes;
+    use crate::tsq::tests::record;
+    use crate::tsq::TsqIndex;
 
     #[test]
     fn test_pairs_offsets_by_encoded_name_and_groups_scalars() {

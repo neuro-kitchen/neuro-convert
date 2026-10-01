@@ -6,7 +6,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::common::text::decode_single_byte;
+use nc_base::text::decode_single_byte;
 
 /// One store's settings (`StoreName`, `NumChan`, `SampleFreq`, `DataFormat`, …).
 pub type TbkStore = BTreeMap<String, String>;

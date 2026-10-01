@@ -1,10 +1,10 @@
-//! Tucker-Davis Technologies (TDT) blocks written by Synapse or OpenEx.
+//! nc-tdt: Tucker-Davis Technologies (TDT) blocks written by Synapse or OpenEx.
 //!
 //! A block folder holds a TSQ index, a TEV data file (or per-channel SEV files), and text
 //! sidecars. Every store becomes part of one [`Session`]:
-//! streams → [`Recording`](crate::model::Recording)s, epocs and scalars →
-//! [`EventSeries`](crate::model::EventSeries), snips →
-//! [`SnippetSeries`](crate::model::SnippetSeries), CSV exports → tables.
+//! streams → [`Recording`](nc_core::Recording)s, epocs and scalars →
+//! [`EventSeries`](nc_core::EventSeries), snips →
+//! [`SnippetSeries`](nc_core::SnippetSeries), CSV exports → tables.
 
 pub mod block;
 pub mod codes;
@@ -29,17 +29,14 @@ use notes::synapse::{parse_notes, parse_stores_listing};
 use tsq::TsqIndex;
 use version::TdtVersion;
 
-use crate::common::mapped::MappedFile;
-use crate::common::text::read_text;
-use crate::common::time::{format_iso, parse_iso};
-use crate::error::{Error, Result};
-use crate::model::{Device, Provenance, Session};
-use crate::options::OpenOptions;
-use crate::registry::{Detection, InputFormat};
+use nc_base::mapped::MappedFile;
+use nc_base::text::read_text;
+use nc_base::time::{format_iso, parse_iso};
+use nc_core::{Detection, Device, Error, OpenOptions, Provenance, Reader, Recording, Result, Session};
 
 pub struct Tdt;
 
-impl InputFormat for Tdt {
+impl Reader for Tdt {
     fn name(&self) -> &'static str {
         "tdt"
     }
@@ -168,7 +165,7 @@ pub fn open_block(path: &Path, options: &OpenOptions) -> Result<Session> {
         let start = index.stores.get(name).and_then(|s| s.first_timestamp.values().copied().reduce(f64::min)).map_or(0.0, |t| tsq::session_time(t, index.start));
         let description = listing.stores.get(name).map_or_else(|| "TDT stream store (SEV files)".to_string(), |d| format!("{} ({})", d.object, d.object_type));
         match sev::SevStream::build(name, channels, start.max(0.0), expected_rate(name), rawpacked(name), description, &mut warnings) {
-            Ok(v) => session.recordings.extend(v.into_iter().map(|r| Arc::new(r) as Arc<dyn crate::model::Recording>)),
+            Ok(v) => session.recordings.extend(v.into_iter().map(|r| Arc::new(r) as Arc<dyn Recording>)),
             Err(e) => warnings.push(format!("{name}: SEV skipped ({e})")),
         }
     }
@@ -255,6 +252,12 @@ mod tests {
     use super::*;
     use tsq::tests::record;
 
+    /// `<workspace>/target/<name>`: fixtures kept after the test so TDT's Python reader can
+    /// cross-check them (`tools/python/compare_tdt.py`).
+    fn fixture_dir(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target").join(name)
+    }
+
     /// A tiny Synapse-like block: one 2-channel float stream (4 samples per packet), one epoc.
     fn write_block(dir: &Path) {
         std::fs::create_dir_all(dir).unwrap();
@@ -284,7 +287,7 @@ mod tests {
     #[test]
     fn test_sev_block() {
         use sev::header::tests::header;
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tdt-sev-fixture");
+        let dir = fixture_dir("tdt-sev-fixture");
         let _ = std::fs::remove_dir_all(&dir);
         write_block(&dir);
         let sev = |name: &str, head: Vec<u8>, payload: Vec<u8>| {
@@ -341,7 +344,7 @@ mod tests {
     /// can cross-check the sort-code indexing.
     #[test]
     fn test_sort_result_and_tank() {
-        let tank = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target/tdt-tank-fixture");
+        let tank = fixture_dir("tdt-tank-fixture");
         let _ = std::fs::remove_dir_all(&tank);
         let b1 = tank.join("b1");
         std::fs::create_dir_all(&b1).unwrap();

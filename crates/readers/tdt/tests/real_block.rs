@@ -1,11 +1,19 @@
 //! The TDT reader against TDT's own Python reader (`tdt` 0.7.6, `read_block`) on a real
 //! Synapse block. Skipped when the block is not on disk (it is not committed: 19 GB).
+//!
+//! The block is looked up as `<data>/15-25-33_meps`, where `<data>` is `$NC_DATA_DIR` or the
+//! workspace's git-ignored `data/` folder.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use neuro_convert::OpenOptions;
+use nc_core::{OpenOptions, Reader};
+use nc_tdt::Tdt;
 
-const BLOCK: &str = "../playground/data/15-25-33_meps";
+const BLOCK: &str = "15-25-33_meps";
+
+fn data_dir() -> PathBuf {
+    std::env::var_os("NC_DATA_DIR").map_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data"), PathBuf::from)
+}
 
 fn close(a: f64, b: f64, tol: f64) -> bool {
     (a - b).abs() <= tol
@@ -13,12 +21,12 @@ fn close(a: f64, b: f64, tol: f64) -> bool {
 
 #[test]
 fn matches_tdt_python_reader() {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(BLOCK);
+    let path = data_dir().join(BLOCK);
     if !path.exists() {
-        eprintln!("skipped: {} not found", path.display());
+        eprintln!("skipped: {} not found (set NC_DATA_DIR)", path.display());
         return;
     }
-    let s = neuro_convert::open(&path, &OpenOptions::default()).unwrap();
+    let s = Tdt.open(&path, &OpenOptions::default()).unwrap();
     assert_eq!(s.provenance.version.as_deref(), Some("Synapse 53575"));
     assert!(s.provenance.warnings.is_empty(), "{:?}", s.provenance.warnings);
 

@@ -1,6 +1,6 @@
 //! TSQ event-type and data-format codes (TDT `TTank` constants).
 
-use crate::model::SampleType;
+use nc_base::SampleType;
 
 pub const EVTYPE_UNKNOWN: u32 = 0x0000_0000;
 pub const EVTYPE_STRON: u32 = 0x0000_0101;
