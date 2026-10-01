@@ -2,8 +2,7 @@ use std::collections::BTreeMap;
 use std::ops::Range;
 
 use super::recording::{check_read, ChannelInfo, Recording, RecordingInfo, SignalKind};
-use super::sample::{MemoryOrder, SampleType};
-use crate::error::{Error, Result};
+use nc_base::{Error, MemoryOrder, Result, SampleType};
 
 /// Recording held in memory as channel-major, already-scaled samples (tests, derived data).
 #[derive(Debug, Clone)]
