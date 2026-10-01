@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::time::Instant;
 
-use neuro_convert::OpenOptions;
+use nc_convert::OpenOptions;
 
 pub fn run(path: &Path, read_sec: Option<f64>, options: &OpenOptions) -> anyhow::Result<()> {
-    let detections = neuro_convert::detect(path);
+    let detections = nc_convert::detect(path);
     let t = Instant::now();
-    let s = neuro_convert::open(path, options)?;
+    let s = nc_convert::open(path, options)?;
     let opened = t.elapsed();
 
     let p = &s.provenance;
@@ -129,7 +129,7 @@ pub fn run(path: &Path, read_sec: Option<f64>, options: &OpenOptions) -> anyhow:
 /// JSON summary: per store the shape and the first values (for comparisons with other readers).
 /// `at_sec` picks where stream samples are taken (default: the start).
 pub fn json(path: &Path, at_sec: Option<f64>, options: &OpenOptions) -> anyhow::Result<()> {
-    let s = neuro_convert::open(path, options)?;
+    let s = nc_convert::open(path, options)?;
     let recordings: Vec<serde_json::Value> = s
         .recordings
         .iter()

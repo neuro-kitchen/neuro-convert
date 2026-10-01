@@ -1,7 +1,10 @@
 """Compare neuro-convert's TDT reader with TDT's own Python reader (`tdt.read_block`).
 
 Usage:
-    uv run --no-project --with tdt --with numpy tests/compare_tdt.py <block> [<block> ...]
+    cargo build --release
+    uv run --no-project --with tdt --with numpy tools/python/compare_tdt.py <block> [<block> ...]
+
+Run from the workspace root (uses target/release/neuro-convert).
 
 For every store: stream rate, channels, sample count and first samples; epoc onsets, offsets
 and values; scalar values; snip counts, times, channels, sort codes and first waveform values.

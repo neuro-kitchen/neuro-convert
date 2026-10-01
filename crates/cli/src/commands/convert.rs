@@ -2,8 +2,8 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use clap::Args;
-use neuro_convert::metadata::{Level, MetadataFile};
-use neuro_convert::outputs::nwb::{self, NwbOptions, NwbPlan};
+use nc_convert::core::{Level, MetadataFile, Session};
+use nc_convert::nwb::{self, NwbOptions, NwbPlan};
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -39,12 +39,12 @@ pub struct ConvertArgs {
 }
 
 pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
-    let session = neuro_convert::open(&a.input, &a.open.options())?;
+    let session = nc_convert::open(&a.input, &a.open.options())?;
     let meta = match &a.metadata {
         Some(p) => MetadataFile::load(p)?,
         None => MetadataFile::default(),
     };
-    let plan = nwb::resolve(&session, &meta, || uuid_like());
+    let plan = nwb::resolve(&session, &meta, nwb::new_identifier);
     print_plan(&plan, &session);
     if a.dry_run {
         return Ok(());
@@ -61,8 +61,9 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     println!("\nWriting {} ({} threads, {}) …", a.output.display(), options.threads, gzip.map_or("uncompressed".into(), |l| format!("gzip {l}")));
     let summary = nwb::write(&session, &plan, &a.output, &options, &|p| {
         let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 100.0 };
-        let rate = p.done as f64 * 4.0 / 1e6 / p.elapsed.as_secs_f64().max(1e-9);
-        print!("\r  {pct:5.1}%  {rate:6.0} MB/s  {:5.0} s", p.elapsed.as_secs_f64());
+        // Progress counts samples (all channels); series differ in sample size, so no MB/s
+        let rate = p.done as f64 / 1e6 / p.elapsed.as_secs_f64().max(1e-9);
+        print!("\r  {pct:5.1}%  {rate:7.1} M samples/s  {:5.0} s", p.elapsed.as_secs_f64());
         let _ = std::io::stdout().flush();
     })?;
     println!("\nDone: {} series, {:.2} G samples in {:.1} s", summary.series, summary.samples as f64 / 1e9, summary.seconds);
@@ -75,7 +76,7 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn print_plan(plan: &NwbPlan, session: &neuro_convert::Session) {
+fn print_plan(plan: &NwbPlan, session: &Session) {
     let f = &plan.file;
     println!("=== NWB plan ===");
     println!("identifier:   {}", f.identifier);
@@ -129,10 +130,4 @@ pub fn validate(path: &std::path::Path) -> anyhow::Result<()> {
         anyhow::bail!("{} is not a valid NWB-Zarr store", path.display());
     }
     Ok(())
-}
-
-/// Random UUID v4 text for the NWB identifier.
-fn uuid_like() -> String {
-    // The library generates object ids with `uuid`; reuse it through a throwaway plan field
-    neuro_convert::outputs::nwb::types::typed("core", "x")["object_id"].as_str().unwrap_or_default().to_string()
 }

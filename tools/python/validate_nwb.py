@@ -2,9 +2,10 @@
 
 Usage:
     uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector \
-        tests/validate_nwb.py <store.nwb.zarr> [--small]
+        tools/python/validate_nwb.py <store.nwb.zarr> [--small]
 
---small also checks the exact values written by tests/outputs_nwb.rs.
+--small also checks the exact values written by crates/nwb/tests/write.rs
+(target/nwb-test/small.nwb.zarr). Run from the workspace root.
 """
 
 import sys

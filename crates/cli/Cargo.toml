@@ -1,0 +1,20 @@
+[package]
+name = "nc-cli"
+description = "neuro-convert command line: inspect recordings and convert them to NWB"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "neuro-convert"
+path = "src/main.rs"
+
+[features]
+default = ["tdt"]
+tdt = ["nc-convert/tdt"]
+
+[dependencies]
+nc-convert = { workspace = true, features = ["nwb"] }
+anyhow.workspace = true
+clap.workspace = true
+serde_json.workspace = true
