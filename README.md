@@ -65,9 +65,9 @@ cargo test --workspace          # unit + integration
 uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector \
     tools/python/validate_nwb.py target/nwb-test/small.nwb.zarr --small
 cargo build --release && uv run --no-project --with tdt --with numpy \
-    tools/python/compare_tdt.py data/15-25-33_meps
+    tools/python/compare_tdt.py data/raw/tdt-examples/15-25-33_meps
 uv run --no-project --with numpy --with probeinterface \
-    tools/python/compare_spikeglx.py data/ibl/imec_385_100s/imec_385_100s.ap.bin
+    tools/python/compare_spikeglx.py data/raw/spikeglx/imec_385_100s/imec_385_100s.ap.bin
 ```
-Real-data tests read `data/15-25-33_meps` (TDT) and `data/ibl/imec_385_100s` (SpikeGLX) under
-`data/` or `$NC_DATA_DIR`, and skip when absent.
+Real-data tests read `raw/tdt-examples/15-25-33_meps` (TDT) and `raw/spikeglx/imec_385_100s`
+(SpikeGLX) under `data/` or `$NC_DATA_DIR`, and skip (with a message) when absent.

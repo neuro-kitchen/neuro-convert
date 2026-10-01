@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=neuro-convert
+GenericName=Neurophysiology to NWB converter
+Comment=Inspect neurophysiology recordings (TDT, SpikeGLX) and convert them to NWB (Zarr)
+Exec=neuro-convert-app %f
+Terminal=false
+Categories=Science;Biology;
+Keywords=NWB;neuroscience;electrophysiology;TDT;SpikeGLX;Neuropixels;
+StartupWMClass=org.neuro-kitchen.neuro-convert
