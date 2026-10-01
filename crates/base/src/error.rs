@@ -25,6 +25,10 @@ pub enum Error {
 
     #[error("output buffer holds {actual} values, the request needs {expected}")]
     BufferSize { expected: usize, actual: usize },
+
+    /// The operation was stopped through its cancel flag.
+    #[error("cancelled")]
+    Cancelled,
 }
 
 impl Error {
