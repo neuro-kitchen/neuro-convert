@@ -1,0 +1,17 @@
+[package]
+name = "nc-convert"
+description = "neuro-convert API: reader registry and conversion pipeline used by the CLI and the app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+default = ["tdt", "nwb"]
+tdt = ["dep:nc-tdt"]
+nwb = ["dep:nc-nwb"]
+
+[dependencies]
+nc-base.workspace = true
+nc-core.workspace = true
+nc-tdt = { workspace = true, optional = true }
+nc-nwb = { workspace = true, optional = true }
