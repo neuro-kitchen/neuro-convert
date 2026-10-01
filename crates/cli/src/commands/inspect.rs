@@ -43,14 +43,8 @@ pub fn run(path: &Path, read_sec: Option<f64>, options: &OpenOptions) -> anyhow:
     println!("  {:6} {:>4} {:>11} {:>12} {:>9} {:>8} {:>6} {:8}  description", "name", "ch", "rate (Hz)", "samples", "duration", "stored", "unit", "storage");
     for r in &s.recordings {
         let i = r.info();
-        // Source-specific storage tag (e.g. TDT `tev` / `sev v3`), when the input records one
-        let storage = match (i.metadata.get("tdt_storage"), i.metadata.get("sev_version")) {
-            (Some(s), Some(v)) => format!("{s} v{v}"),
-            (Some(s), None) => s.clone(),
-            _ => String::new(),
-        };
         println!(
-            "  {:6} {:>4} {:>11.4} {:>12} {:>8.1}s {:>8} {:>6} {storage:8}  {}",
+            "  {:6} {:>4} {:>11.4} {:>12} {:>8.1}s {:>8} {:>6} {:8}  {}",
             i.name,
             i.channel_count(),
             i.sample_rate,
@@ -58,8 +52,19 @@ pub fn run(path: &Path, read_sec: Option<f64>, options: &OpenOptions) -> anyhow:
             i.duration(),
             i.stored_as.name(),
             i.unit,
+            i.storage,
             i.description
         );
+        if let nc_convert::core::Calibration::Unknown { note } = &i.calibration {
+            println!("  {:6} physical scale unknown: {note}", "");
+        }
+    }
+    if !s.electrodes.is_empty() {
+        println!("\n-- Electrodes ({} in {} groups)", s.electrodes.len(), s.electrode_groups.len());
+        for g in &s.electrode_groups {
+            let n = s.electrodes.iter().filter(|e| e.group == g.name).count();
+            println!("  {:16} {n:>4} electrodes  {}  {}", g.name, g.location, g.description);
+        }
     }
 
     println!("\n-- Events ({})", s.events.len());
@@ -88,6 +93,15 @@ pub fn run(path: &Path, read_sec: Option<f64>, options: &OpenOptions) -> anyhow:
         println!("\n-- Warnings ({})", p.warnings.len());
         for w in &p.warnings {
             println!("  ! {w}");
+        }
+    }
+    // Model invariants: an error here is a reader bug, not a problem with the recording
+    let issues = s.validate();
+    if !issues.is_empty() {
+        println!("\n-- Model check ({})", issues.len());
+        for i in &issues {
+            let tag = if i.level == nc_convert::core::Level::Error { "ERROR" } else { "warning" };
+            println!("  {tag}: {}", i.message);
         }
     }
 
@@ -159,7 +173,8 @@ pub fn json(path: &Path, at_sec: Option<f64>, options: &OpenOptions) -> anyhow::
             "sort_codes": &sn.sort_codes[..3.min(sn.len())], "values": &sn.data[..3.min(sn.data.len())] }))
         .collect();
     let out = serde_json::json!({ "format": s.provenance.format, "version": s.provenance.version, "duration": s.duration(),
-        "recordings": recordings, "events": events, "snippets": snippets, "warnings": s.provenance.warnings });
+        "recordings": recordings, "events": events, "snippets": snippets, "electrode_groups": s.electrode_groups,
+        "electrodes": s.electrodes, "warnings": s.provenance.warnings });
     println!("{}", serde_json::to_string_pretty(&out)?);
     Ok(())
 }
