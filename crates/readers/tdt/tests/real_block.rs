@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use nc_core::{OpenOptions, Reader};
+use nc_core::OpenOptions;
 use nc_tdt::Tdt;
 
 const BLOCK: &str = "15-25-33_meps";
@@ -26,7 +26,8 @@ fn matches_tdt_python_reader() {
         eprintln!("skipped: {} not found (set NC_DATA_DIR)", path.display());
         return;
     }
-    let s = Tdt.open(&path, &OpenOptions::default()).unwrap();
+    // Detection, model invariants and read consistency at the start, middle and end
+    let s = nc_core::testkit::check_reader(&Tdt, &path, &OpenOptions::default());
     assert_eq!(s.provenance.version.as_deref(), Some("Synapse 53575"));
     assert!(s.provenance.warnings.is_empty(), "{:?}", s.provenance.warnings);
 

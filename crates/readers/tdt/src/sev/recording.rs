@@ -11,7 +11,7 @@ use super::header::HEADER_BYTES;
 use crate::codes;
 use nc_base::codec::decode_into;
 use nc_base::mapped::MappedFile;
-use nc_core::{check_read, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
+use nc_core::{check_read, Calibration, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
 
 /// Which part of each stored item a recording exposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,8 +86,6 @@ impl SevStream {
 
         let mut metadata = BTreeMap::new();
         metadata.insert("tdt_store".into(), store.to_string());
-        metadata.insert("tdt_storage".into(), "sev".into());
-        metadata.insert("sev_version".into(), header.version.to_string());
         let hours = files.values().map(Vec::len).max().unwrap_or(1);
         if hours > 1 {
             metadata.insert("sev_hour_files".into(), hours.to_string());
@@ -100,9 +98,11 @@ impl SevStream {
             sample_rate: rate,
             start_time,
             unit: if matches!(stored, SampleType::F32 | SampleType::F64) { "V".into() } else { "a.u.".into() },
+            calibration: Calibration::Known,
             kind: SignalKind::Other,
             stored_as: stored,
             order: MemoryOrder::ChannelMajor,
+            storage: format!("sev v{}", header.version),
             metadata: {
                 let mut m = metadata.clone();
                 if part != Part::Whole {

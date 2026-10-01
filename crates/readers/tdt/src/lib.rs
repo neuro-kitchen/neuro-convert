@@ -258,6 +258,11 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target").join(name)
     }
 
+    /// Opens through the shared reader conformance checks (detection, invariants, reads).
+    fn conform(path: &Path, options: OpenOptions) -> Session {
+        nc_core::testkit::check_reader(&Tdt, path, &options)
+    }
+
     /// A tiny Synapse-like block: one 2-channel float stream (4 samples per packet), one epoc.
     fn write_block(dir: &Path) {
         std::fs::create_dir_all(dir).unwrap();
@@ -313,7 +318,7 @@ mod tests {
         // Old1: headerless v0 file (float32 assumed), store and channel from the name
         sev("Old1_Ch3", vec![0u8; 40], f32s(0..4, 0.5));
 
-        let s = open_block(&dir, &OpenOptions::default()).unwrap();
+        let s = conform(&dir, OpenOptions::default());
         let names: Vec<String> = s.recordings.iter().map(|r| r.info().name.clone()).collect();
         assert_eq!(names, vec!["Old1", "RSn1_LFP", "RSn1_SU", "Wav1"]);
 
@@ -376,14 +381,14 @@ mod tests {
         let err = Tdt.open(&tank, &OpenOptions::default()).err().unwrap().to_string();
         assert!(err.contains("--block") && err.contains("b1, b2"), "{err}");
 
-        let online = Tdt.open(&tank, &OpenOptions { block: Some("b1".into()), ..Default::default() }).unwrap();
+        let online = conform(&tank, OpenOptions { block: Some("b1".into()), ..Default::default() });
         let sn = &online.snippets[0];
         assert_eq!((sn.len(), sn.samples_per_snippet, sn.channels.clone()), (3, 4, vec![1, 2, 3]));
         assert_eq!(&sn.data[4..8], &[10.0, 11.0, 12.0, 13.0]);
         assert_eq!(sn.sort_codes, vec![1, 1, 1]);
         assert_eq!(online.metadata.extra["tdt_sorts"], "Mine");
 
-        let sorted = Tdt.open(&b1, &OpenOptions { sort: Some("Mine".into()), ..Default::default() }).unwrap();
+        let sorted = conform(&b1, OpenOptions { sort: Some("Mine".into()), ..Default::default() });
         assert_eq!(sorted.snippets[0].sort_codes, vec![5, 6, 7]);
         assert_eq!(sorted.metadata.extra["tdt_sort_applied"], "Mine");
 
@@ -396,7 +401,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("nc_tdt_{}", std::process::id()));
         write_block(&dir);
         assert!(Tdt.detect(&dir).is_some());
-        let s = open_block(&dir.join("t_b.tsq"), &OpenOptions::default()).unwrap();
+        let s = conform(&dir.join("t_b.tsq"), OpenOptions::default());
 
         assert_eq!(s.recordings.len(), 1);
         let r = &s.recordings[0];
