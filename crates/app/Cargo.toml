@@ -1,0 +1,22 @@
+[package]
+name = "nc-app"
+description = "neuro-convert desktop app (GPUI + gpui-kit): inspect recordings and convert them to NWB"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "neuro-convert-app"
+path = "src/main.rs"
+
+[dependencies]
+nc-convert = { workspace = true, features = ["tdt", "spikeglx", "nwb"] }
+gpui-kit.workspace = true
+async-channel.workspace = true
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+# Headless UI tests (`#[gpui_kit::test]`, `gpui_kit::test::TestWindowExt`)
+gpui-kit = { workspace = true, features = ["test-support"] }

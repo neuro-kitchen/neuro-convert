@@ -21,6 +21,8 @@ nc-nwb = { path = "crates/nwb" }
 nc-convert = { path = "crates/convert", default-features = false }
 # External
 anyhow = "1.0.104"
+async-channel = "2.5.0"
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
 clap = { version = "4.6.7", features = ["derive"] }
 ctrlc = "3.5.2"
 # Pinned exactly: gpui-kit pins a weekly GPUI snapshot (gpui-pre); update deliberately
@@ -33,3 +35,12 @@ thiserror = "2.0.21"
 uuid = { version = "1.26.1", features = ["v4"] }
 zarrs = { version = "0.23.14", default-features = false, features = ["filesystem", "gzip"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# Dev builds (`cargo run`, `cargo test`) stay debuggable but must not be slow: dependencies (GPUI,
+# wgpu, fonts, zarrs, compression) are fully optimized, our crates lightly (readers and the writer
+# handle millions of samples).
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
