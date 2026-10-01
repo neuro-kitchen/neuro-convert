@@ -3,7 +3,7 @@
 //! channels. After this, writers find everything about electrodes in the session itself.
 
 use crate::electrodes::{ChannelRef, Electrode, ElectrodeGroup};
-use crate::issue::Issue;
+use crate::issue::{Issue, Target};
 use crate::metadata_file::{ImpedanceSpec, MetadataFile, StreamType};
 use crate::session::Session;
 use crate::table::Table;
@@ -41,7 +41,7 @@ impl MetadataFile {
             }
             let Some(group) = spec.electrode_group else { continue };
             if session.electrode_group(&group).is_none() {
-                issues.push(Issue::error(format!("stream {name}: electrode_group {group:?} is not declared under electrode_groups")));
+                issues.push(Issue::error(format!("stream {name}: electrode_group {group:?} is not declared under electrode_groups")).at(Target::Stream(name.clone())));
                 continue;
             }
             let existing = session.channel_electrodes(&name);
@@ -66,7 +66,7 @@ impl MetadataFile {
         for g in &self.electrode_groups {
             let Some(spec) = &g.impedance else { continue };
             let Some(table) = session.tables.iter().find(|t| t.name == spec.table) else {
-                issues.push(Issue::warning(format!("electrode group {}: impedance table {:?} not found", g.name, spec.table)));
+                issues.push(Issue::warning(format!("electrode group {}: impedance table {:?} not found", g.name, spec.table)).at(Target::ElectrodeGroup(g.name.clone())));
                 continue;
             };
             let values: Vec<(usize, Option<f32>)> = session
@@ -93,7 +93,7 @@ impl MetadataFile {
             }
             let Some(group) = spec.electrode_group else { continue };
             if session.electrode_group(&group).is_none() {
-                issues.push(Issue::error(format!("snippets {name}: electrode_group {group:?} is not declared under electrode_groups")));
+                issues.push(Issue::error(format!("snippets {name}: electrode_group {group:?} is not declared under electrode_groups")).at(Target::Snippet(name.clone())));
                 continue;
             }
             let recording = session.electrodes.iter().find(|e| e.group == group).and_then(|e| e.channels.first()).map(|c| c.recording.clone());
@@ -102,7 +102,7 @@ impl MetadataFile {
                 let index = match &map {
                     Some(m) if c >= 1 && (c as usize) <= m.len() => m[c as usize - 1],
                     Some(m) => {
-                        issues.push(Issue::error(format!("snippets {name}: channel {c} is outside the {} electrodes of group {group:?}", m.len())));
+                        issues.push(Issue::error(format!("snippets {name}: channel {c} is outside the {} electrodes of group {group:?}", m.len())).at(Target::Snippet(name.clone())));
                         continue;
                     }
                     None => {
