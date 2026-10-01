@@ -1,6 +1,6 @@
 //! Little-endian sample decoding shared by the binary formats.
 
-use crate::model::SampleType;
+use crate::sample::SampleType;
 
 /// Decodes `out.len()` contiguous samples from `bytes`, applying `value * gain + offset`.
 pub fn decode_into(ty: SampleType, bytes: &[u8], out: &mut [f32], gain: f64, offset: f64) {

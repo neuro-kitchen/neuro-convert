@@ -1,0 +1,13 @@
+//! nc-base: primitives shared by every neuro-convert crate. No neuroscience and no output format
+//! knowledge lives here: errors, sample types, little-endian decoding, memory-mapped files, text
+//! from legacy acquisition software and ISO 8601 time helpers.
+
+pub mod codec;
+pub mod error;
+pub mod mapped;
+pub mod sample;
+pub mod text;
+pub mod time;
+
+pub use error::{Error, Result};
+pub use sample::{MemoryOrder, SampleType};
