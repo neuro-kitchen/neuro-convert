@@ -42,6 +42,10 @@ impl Reader for SpikeGlx {
         "SpikeGLX run (Neuropixels imec probes, NI-DAQ): .bin + .meta"
     }
 
+    fn opens(&self) -> &'static str {
+        "A run folder (with *.ap.bin / *.lf.bin / *.nidq.bin and their .meta files), or one .bin / .meta file"
+    }
+
     fn versions(&self) -> &'static [&'static str] {
         &[
             "imec AP / LF / sync: Neuropixels 3A, 1.0 family, 2.0 (gains and site positions from the metadata)",
@@ -56,6 +60,12 @@ impl Reader for SpikeGlx {
         let confidence = if path.is_file() { 0.95 } else { 0.9 };
         let version = (runs.len() > 1).then(|| format!("{} runs", runs.len()));
         Some(Detection { format: "spikeglx", version, confidence })
+    }
+
+    /// The runs reachable from `path` when there are several.
+    fn containers(&self, path: &Path) -> Vec<String> {
+        let runs = files::runs(path);
+        if runs.len() > 1 { runs.into_keys().collect() } else { Vec::new() }
     }
 
     fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
@@ -388,6 +398,8 @@ snsMnMaXaDw=1,0,1,1\nsnsSaveChanSubset=all\nfileCreateTime=2019-05-07T17:24:01\n
         for ext in ["meta", "bin"] {
             std::fs::copy(dir.join(format!("run_g0_t0.nidq.{ext}")), dir.join(format!("run_g1_t0.nidq.{ext}"))).unwrap();
         }
+        assert_eq!(SpikeGlx.containers(&dir), vec!["run_g0_t0", "run_g1_t0"]);
+        assert!(SpikeGlx.containers(&dir.join("run_g0_t0.nidq.bin")).is_empty(), "a file selects one run");
         let err = SpikeGlx.open(&dir, &OpenOptions::default()).err().unwrap().to_string();
         assert!(err.contains("--block") && err.contains("run_g0_t0, run_g1_t0"), "{err}");
         let one = SpikeGlx.open(&dir, &OpenOptions { block: Some("run_g1_t0".into()), ..Default::default() }).unwrap();

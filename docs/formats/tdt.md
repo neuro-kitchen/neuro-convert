@@ -60,5 +60,5 @@ u16 reserved · u8 format (low 3 bits) · u8 decimate · u16 rate · padding`
 ## Verification
 `tools/python/compare_tdt.py` compares every stream, epoc, scalar and snip store with
 `tdt.read_block`; 0 mismatches on the TDT example data (5 blocks, Synapse 37761–48218) and
-`15-25-33_meps` (`data/tdt-examples/`, `data/15-25-33_meps`). `crates/readers/tdt/tests/real_block.rs`
+`15-25-33_meps` (all under `data/raw/tdt-examples/`). `crates/readers/tdt/tests/real_block.rs`
 pins a few of those values in `cargo test`.

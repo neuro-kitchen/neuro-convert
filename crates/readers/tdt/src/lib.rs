@@ -45,6 +45,10 @@ impl Reader for Tdt {
         "Tucker-Davis Technologies block (TSQ + TEV, Synapse or OpenEx)"
     }
 
+    fn opens(&self) -> &'static str {
+        "A block folder (with .tsq / .tev files), or a tank folder holding several blocks"
+    }
+
     fn versions(&self) -> &'static [&'static str] {
         &["Synapse (Notes.txt, StoresListing.txt, .tin)", "OpenEx (.tnt)", "TEV streams, snips, epocs, scalars"]
     }
@@ -55,6 +59,14 @@ impl Reader for Tdt {
         }
         let blocks = block::tank_blocks(path);
         (!blocks.is_empty()).then(|| Detection { format: "tdt", version: Some(format!("tank, {} blocks", blocks.len())), confidence: 0.9 })
+    }
+
+    /// The blocks of a tank (none for a block folder or file).
+    fn containers(&self, path: &Path) -> Vec<String> {
+        if BlockFiles::find(path).is_some() {
+            return Vec::new();
+        }
+        block::tank_blocks(path).iter().filter_map(|b| Some(b.file_name()?.to_string_lossy().into_owned())).collect()
     }
 
     fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
@@ -378,6 +390,8 @@ mod tests {
 
         // Tank: detected, and several blocks need a choice
         assert_eq!(Tdt.detect(&tank).unwrap().version.as_deref(), Some("tank, 2 blocks"));
+        assert_eq!(Tdt.containers(&tank), vec!["b1", "b2"]);
+        assert!(Tdt.containers(&b1).is_empty(), "a block is not a container");
         let err = Tdt.open(&tank, &OpenOptions::default()).err().unwrap().to_string();
         assert!(err.contains("--block") && err.contains("b1, b2"), "{err}");
 

@@ -1,7 +1,7 @@
 //! The TDT reader against TDT's own Python reader (`tdt` 0.7.6, `read_block`) on a real
 //! Synapse block. Skipped when the block is not on disk (it is not committed: 19 GB).
 //!
-//! The block is looked up as `<data>/15-25-33_meps`, where `<data>` is `$NC_DATA_DIR` or the
+//! The block is looked up as `<data>/raw/tdt-examples/15-25-33_meps`, where `<data>` is `$NC_DATA_DIR` or the
 //! workspace's git-ignored `data/` folder.
 
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use nc_core::OpenOptions;
 use nc_tdt::Tdt;
 
-const BLOCK: &str = "15-25-33_meps";
+const BLOCK: &str = "raw/tdt-examples/15-25-33_meps";
 
 fn data_dir() -> PathBuf {
     std::env::var_os("NC_DATA_DIR").map_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../data"), PathBuf::from)

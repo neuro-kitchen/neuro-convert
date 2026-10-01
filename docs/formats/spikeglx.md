@@ -60,7 +60,7 @@ OneBox (`obx`) streams; TTL events from sync / digital lines; sync-based alignme
 runs (`_t0`, `_t1`, … are separate runs today); `catgt`-processed files.
 
 ## Verification
-- `crates/readers/spikeglx/tests/real_run.rs`: IBL `data/ibl/imec_385_100s` (3A, 384 AP + sync,
+- `crates/readers/spikeglx/tests/real_run.rs`: IBL `data/raw/spikeglx/imec_385_100s` (3A, 384 AP + sync,
   100 s) through `nc_core::testkit::check_reader`, plus pinned values.
 - `tools/python/compare_spikeglx.py`: values against SpikeGLX's own conversion rule and electrode
   positions against probeinterface (0.4.0: identical geometry, x offset 11 µm).
