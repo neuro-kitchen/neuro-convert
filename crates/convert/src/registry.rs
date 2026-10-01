@@ -30,6 +30,10 @@ impl Registry {
         {
             r = r.with(nc_tdt::Tdt);
         }
+        #[cfg(feature = "spikeglx")]
+        {
+            r = r.with(nc_spikeglx::SpikeGlx);
+        }
         r
     }
 

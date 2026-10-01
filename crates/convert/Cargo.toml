@@ -6,12 +6,16 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["tdt", "nwb"]
+default = ["tdt", "spikeglx", "nwb"]
 tdt = ["dep:nc-tdt"]
+spikeglx = ["dep:nc-spikeglx"]
 nwb = ["dep:nc-nwb"]
 
 [dependencies]
 nc-base.workspace = true
 nc-core.workspace = true
 nc-tdt = { workspace = true, optional = true }
+nc-spikeglx = { workspace = true, optional = true }
 nc-nwb = { workspace = true, optional = true }
+serde.workspace = true
+serde_json.workspace = true
