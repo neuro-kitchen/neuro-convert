@@ -1,0 +1,13 @@
+[package]
+name = "nc-spikeglx"
+description = "neuro-convert reader for SpikeGLX recordings (Neuropixels imec probes, NI-DAQ)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nc-base.workspace = true
+nc-core.workspace = true
+
+[dev-dependencies]
+nc-core = { workspace = true, features = ["testkit"] }
