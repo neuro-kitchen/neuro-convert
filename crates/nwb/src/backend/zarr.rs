@@ -15,8 +15,7 @@ use zarrs::group::GroupBuilder;
 use zarrs::storage::{ReadableWritableListableStorage, ReadableWritableListableStorageTraits};
 
 use super::{Attrs, Backend, RowSink};
-use crate::error::{Error, Result};
-use crate::model::SampleType;
+use nc_base::{Error, Result, SampleType};
 
 fn err(context: &str, e: impl std::fmt::Display) -> Error {
     Error::format("nwb-zarr", format!("{context}: {e}"))

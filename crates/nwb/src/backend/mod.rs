@@ -8,8 +8,7 @@ pub mod zarr;
 
 use serde_json::{Map, Value};
 
-use crate::error::Result;
-use crate::model::SampleType;
+use nc_base::{Result, SampleType};
 
 pub type Attrs = Map<String, Value>;
 

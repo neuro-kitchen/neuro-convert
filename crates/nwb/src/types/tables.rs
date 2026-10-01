@@ -4,10 +4,9 @@
 use serde_json::json;
 
 use super::{column, typed};
-use crate::error::Result;
-use crate::model::Table;
-use crate::outputs::nwb::backend::Backend;
-use crate::outputs::nwb::mapping::{safe_name, TablePlan};
+use crate::backend::Backend;
+use crate::mapping::{safe_name, TablePlan};
+use nc_core::{Result, Table};
 
 pub fn write(b: &dyn Backend, plan: &TablePlan, t: &Table) -> Result<()> {
     let path = format!("/analysis/{}", plan.name);

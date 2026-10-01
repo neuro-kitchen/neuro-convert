@@ -4,10 +4,9 @@
 use serde_json::json;
 
 use super::{column, typed, typed_with};
-use crate::error::Result;
-use crate::model::Session;
-use crate::outputs::nwb::backend::{Attrs, Backend};
-use crate::outputs::nwb::mapping::NwbPlan;
+use crate::backend::{Attrs, Backend};
+use crate::mapping::NwbPlan;
+use nc_core::{Result, Session};
 
 pub const TABLE_PATH: &str = "/general/extracellular_ephys/electrodes";
 

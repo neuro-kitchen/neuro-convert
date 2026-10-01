@@ -10,18 +10,17 @@ use std::sync::Mutex;
 use serde_json::json;
 
 use super::{attrs, typed_with};
-use crate::error::{Error, Result};
-use crate::model::{EventSeries, Recording, SampleType};
-use crate::outputs::nwb::backend::{Attrs, Backend};
-use crate::outputs::nwb::mapping::{EventPlan, SeriesPlan};
-use crate::outputs::nwb::types::electrodes::TABLE_PATH;
+use crate::backend::{Attrs, Backend};
+use crate::mapping::{EventPlan, SeriesPlan};
+use crate::types::electrodes::TABLE_PATH;
+use nc_core::{Error, EventSeries, Recording, Result, SampleType};
 
 /// Writes a continuous series; `done` counts samples written (all channels) for progress.
 pub fn write_continuous(
     b: &dyn Backend,
     plan: &SeriesPlan,
     rec: &dyn Recording,
-    chunks: crate::outputs::nwb::ChunkPolicy,
+    chunks: crate::ChunkPolicy,
     threads: usize,
     done: &AtomicU64,
 ) -> Result<()> {
