@@ -14,7 +14,7 @@
 //!
 //! Sample rate = `2^(rate − 12) × 25 MHz / decimate`.
 
-use crate::error::{Error, Result};
+use nc_base::{Error, Result};
 
 pub const HEADER_BYTES: usize = 40;
 /// Assumed rate of headerless (v0) files, as in TDT's reader.
@@ -68,7 +68,7 @@ impl SevHeader {
 
     /// Bytes per stored item.
     pub fn item_bytes(&self) -> Option<usize> {
-        crate::inputs::tdt::codes::sample_type(self.format as u32).map(|t| t.bytes())
+        crate::codes::sample_type(self.format as u32).map(|t| t.bytes())
     }
 }
 

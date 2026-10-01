@@ -3,8 +3,8 @@
 
 use std::path::Path;
 
-use crate::common::text::read_text;
-use crate::model::Table;
+use nc_base::text::read_text;
+use nc_core::Table;
 
 pub fn read_csv_table(path: &Path) -> Option<Table> {
     let text = read_text(path)?;

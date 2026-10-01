@@ -11,10 +11,9 @@ use std::sync::Arc;
 use super::codes;
 use super::notes::synapse::StoreDescription;
 use super::tsq::{session_time, StoreIndex};
-use crate::common::codec::decode_into;
-use crate::common::mapped::MappedFile;
-use crate::error::{Error, Result};
-use crate::model::{check_read, ChannelInfo, MemoryOrder, Recording, RecordingInfo, SampleType, SignalKind};
+use nc_base::codec::decode_into;
+use nc_base::mapped::MappedFile;
+use nc_core::{check_read, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
 
 pub struct TdtStream {
     info: RecordingInfo,

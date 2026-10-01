@@ -3,10 +3,9 @@
 
 use super::codes;
 use super::tsq::{session_time, StoreIndex};
-use crate::common::codec::decode_into;
-use crate::common::mapped::MappedFile;
-use crate::error::{Error, Result};
-use crate::model::SnippetSeries;
+use nc_base::codec::decode_into;
+use nc_base::mapped::MappedFile;
+use nc_core::{Error, Result, SampleType, SnippetSeries};
 
 pub fn build(store: &StoreIndex, tev: &MappedFile, block_start: f64, sort: Option<(&str, &[u8])>, warnings: &mut Vec<String>) -> Result<SnippetSeries> {
     let ty = codes::sample_type(store.format)
@@ -17,7 +16,7 @@ pub fn build(store: &StoreIndex, tev: &MappedFile, block_start: f64, sort: Optio
         description: "TDT snippet store".into(),
         sample_rate: store.frequency,
         samples_per_snippet: points,
-        unit: if matches!(ty, crate::model::SampleType::F32 | crate::model::SampleType::F64) { "V".into() } else { "a.u.".into() },
+        unit: if matches!(ty, SampleType::F32 | SampleType::F64) { "V".into() } else { "a.u.".into() },
         ..Default::default()
     };
     let bytes = tev.bytes();

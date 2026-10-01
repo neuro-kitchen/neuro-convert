@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use super::header::{SevHeader, HEADER_BYTES};
-use crate::error::{Error, Result};
+use nc_base::{Error, Result};
 
 #[derive(Debug, Clone)]
 pub struct SevFile {
