@@ -49,6 +49,7 @@ pub struct ConvertArgs {
 
 pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     let mut job = Job::open(&Registry::builtin(), &a.input, &a.open.options())?;
+    job.set_program("neuro-convert", env!("CARGO_PKG_VERSION"));
     let meta = match &a.metadata {
         Some(p) => MetadataFile::load(p)?,
         None => MetadataFile::default(),
