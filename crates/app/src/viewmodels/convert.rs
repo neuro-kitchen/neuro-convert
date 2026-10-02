@@ -117,9 +117,13 @@ pub fn blocked_reason(plan: &nc_convert::nwb::NwbPlan) -> Option<String> {
 
 /// Versions, recording, reader warnings, plan issues and the last outcome, for bug reports.
 pub fn diagnostics(ws: &Workspace) -> String {
-    let mut d = format!("neuro-convert-app {}\nrecording: {:?}\n", env!("CARGO_PKG_VERSION"), ws.state.source);
+    let mut d = format!("neuro-convert-app {}\n", env!("CARGO_PKG_VERSION"));
+    for v in nc_convert::versions() {
+        d += &format!("{v}\n");
+    }
+    d += &format!("recording: {:?}\n", ws.state.source);
     if let Some(s) = ws.session() {
-        d += &format!("format: {} {:?}\n", s.provenance.format, s.provenance.version);
+        d += &format!("format: {} {:?} (reader {})\n", s.provenance.format, s.provenance.version, s.provenance.reader);
         for w in &s.provenance.warnings {
             d += &format!("reader warning: {w}\n");
         }

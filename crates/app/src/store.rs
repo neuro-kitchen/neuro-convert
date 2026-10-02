@@ -40,7 +40,11 @@ impl Store {
         self.emit(events, cx);
         let Some(options) = options else { return };
         let registry = self.ws.registry();
-        let rx = services::run("open", move || Job::open(&registry, &path, &options));
+        let rx = services::run("open", move || {
+            let mut job = Job::open(&registry, &path, &options)?;
+            job.set_program("neuro-convert-app", env!("CARGO_PKG_VERSION"));
+            Ok(job)
+        });
         cx.spawn(async move |this, cx| {
             if let Ok(result) = rx.recv().await {
                 let _ = this.update(cx, |store, cx| {

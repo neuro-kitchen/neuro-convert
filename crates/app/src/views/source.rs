@@ -3,9 +3,12 @@
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::tag::Tag;
+use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _};
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::{div, Context, Entity, FontWeight, InteractiveElement as _, StatefulInteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Subscription, Window};
+use gpui_kit::{div, Context, Entity, FontWeight, InteractiveElement as _, StatefulInteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window};
 
 use crate::actions::OpenRecording;
 use crate::viewmodels::source::{Screen, SourceVm};
@@ -13,13 +16,15 @@ use crate::widgets::{Card, Muted};
 
 pub struct SourceView {
     vm: Entity<SourceVm>,
+    /// "What can be opened" shows each format's details (folded by default: one line of tags).
+    formats_open: bool,
     _vm: Subscription,
 }
 
 impl SourceView {
     pub fn new(vm: Entity<SourceVm>, cx: &mut Context<Self>) -> Self {
         let sub = cx.observe(&vm, |_, _, cx| cx.notify());
-        Self { vm, _vm: sub }
+        Self { vm, formats_open: false, _vm: sub }
     }
 }
 
@@ -52,15 +57,50 @@ impl Render for SourceView {
                     .child(div().text_xs().text_color(muted).child(d.path))
             }));
 
-        let formats = Card::new().title("What can be opened").children(vm.formats.iter().map(|f| {
-            v_flex()
-                .gap_0p5()
-                .pb_2()
-                .border_b_1()
-                .border_color(border)
-                .child(h_flex().gap_2().child(Tag::secondary().small().child(f.name.to_uppercase())).child(div().text_sm().font_weight(FontWeight::MEDIUM).child(f.description.clone())))
-                .child(div().text_sm().text_color(muted).child(f.opens.clone()))
-        }));
+        // What can be opened: one line of format tags (details on hover); the toggle shows what
+        // each format expects. Long descriptions wrap; the maturity tag keeps its size.
+        let maturity_tag = |f: &crate::viewmodels::source::FormatCard| {
+            let (label, explain) = f.maturity.clone();
+            let tag = if label == "verified" { Tag::success() } else { Tag::warning() };
+            div().id(SharedString::from(format!("maturity-{}", f.name))).test_support().flex_none().child(tag.xsmall().child(label)).tooltip(move |window, cx| Tooltip::new(explain.clone()).build(window, cx))
+        };
+        let open_formats = self.formats_open;
+        let view = cx.entity();
+        let toggle = Button::new("formats-toggle")
+            .ghost()
+            .small()
+            .icon(if open_formats { IconName::ChevronUp } else { IconName::ChevronDown })
+            .label(if open_formats { "Hide details" } else { "What each format expects" })
+            .on_click(move |_, _, cx| view.update(cx, |this, cx| {
+                this.formats_open = !this.formats_open;
+                cx.notify();
+            }));
+        let count = vm.formats.len();
+        let formats = if open_formats {
+            Card::new().title("What can be opened").aside(toggle).children(vm.formats.iter().enumerate().map(|(i, f)| {
+                v_flex()
+                    .gap_0p5()
+                    .when(i + 1 < count, |d| d.pb_2().border_b_1().border_color(border))
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .items_start()
+                            .child(div().flex_none().child(Tag::secondary().small().child(f.name.to_uppercase())))
+                            .child(div().flex_1().min_w_0().text_sm().font_weight(FontWeight::MEDIUM).child(f.description.clone()))
+                            .child(maturity_tag(f)),
+                    )
+                    .child(div().text_sm().text_color(muted).child(f.opens.clone()))
+            }))
+        } else {
+            Card::new().title("What can be opened").aside(toggle).child(h_flex().gap_2().flex_wrap().children(vm.formats.iter().map(|f| {
+                let detail = format!("{}\n{}", f.description, f.opens);
+                div()
+                    .id(SharedString::from(format!("format-{}", f.name)))
+                    .test_support()
+                    .child(Tag::secondary().small().child(f.name.to_uppercase()))
+                    .tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+            })))
+        };
 
         let middle = match screen {
             Screen::Opening(path) => Some(Card::new().title("Opening…").child(Muted::new(format!("Reading {}", path.display())))),
@@ -92,16 +132,9 @@ impl Render for SourceView {
             }))
         });
 
-        v_flex()
-            .id("source-step")
-            .test_support()
-            .size_full()
-            .p_6()
-            .gap_4()
-            .max_w(gpui_kit::px(880.))
-            .child(open)
-            .children(middle)
-            .children(recent)
-            .child(formats)
+        // A centered column that scrolls (like the other steps), so nothing runs under the footer
+        let column = v_flex().w_full().max_w(gpui_kit::px(880.)).gap_4().child(open).children(middle).children(recent).child(formats);
+        // (the id sits outside the scroll wrapper, which replaces its child's id)
+        div().id("source-step").test_support().size_full().child(v_flex().size_full().p_6().items_center().child(column).overflow_y_scrollbar())
     }
 }

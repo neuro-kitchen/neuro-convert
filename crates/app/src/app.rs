@@ -444,6 +444,17 @@ mod tests {
             window.render_frame(cx);
             let s = window.find("source-step").bounds().size;
             assert!(s.width > px(400.) && s.height > px(200.), "{s:?}");
+            // The step scrolls inside its area: it ends above the footer instead of running under it
+            assert!(window.find("source-step").bounds().bottom() <= window.find("step-next").bounds().top() + px(1.));
+            // Format details are folded: tags only, details after the toggle
+            assert!(window.try_find("maturity-fake").is_none() && window.try_find("format-fake").is_some());
+            window.click("formats-toggle", cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.try_find("maturity-fake").is_some(), "details shown");
             // Nothing open: no way forward
             window.click("step-next", cx);
         })
