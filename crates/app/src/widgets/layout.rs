@@ -1,9 +1,12 @@
-//! Layout pieces: a titled section, a labelled field row, a plan path row, secondary text.
+//! Layout pieces: a titled section, a labelled field row, a plan path row, secondary text, an
+//! empty state.
 
-use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _};
+use gpui_kit::component::empty::{Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyMediaVariant, EmptyTitle};
+use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Icon, IconName};
 use gpui_kit::{div, relative, AnyElement, App, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString, Styled as _, Window};
 
-/// A titled block.
+/// A titled block: the title stands above a bordered box with the block's rows, so a panel
+/// reads as a few groups rather than one list of equal lines.
 #[derive(IntoElement)]
 pub struct Section {
     title: SharedString,
@@ -24,11 +27,11 @@ impl ParentElement for Section {
 
 impl RenderOnce for Section {
     fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
+        let t = cx.theme();
         v_flex()
-            .gap_2()
-            .pb_3()
-            .child(div().text_xs().font_weight(FontWeight::SEMIBOLD).text_color(cx.theme().muted_foreground).child(self.title.to_uppercase()))
-            .children(self.children)
+            .gap_1p5()
+            .child(div().text_sm().font_weight(FontWeight::SEMIBOLD).text_color(t.foreground).child(self.title))
+            .child(v_flex().gap_3().p_3().rounded_lg().border_1().border_color(t.border).bg(t.background).children(self.children))
     }
 }
 
@@ -71,15 +74,41 @@ impl RenderOnce for Muted {
     }
 }
 
-/// Seconds as `1 h 02 min`, `3 min 05 s` or `4.20 s`.
+/// What an empty region is for: an icon, a title and one line, centered in the region.
+#[derive(IntoElement)]
+pub struct EmptyState {
+    icon: IconName,
+    title: SharedString,
+    description: SharedString,
+}
+
+impl EmptyState {
+    pub fn new(icon: IconName, title: impl Into<SharedString>, description: impl Into<SharedString>) -> Self {
+        Self { icon, title: title.into(), description: description.into() }
+    }
+}
+
+impl RenderOnce for EmptyState {
+    fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
+        let header = EmptyHeader::new()
+            .media(EmptyMedia::new().with_variant(EmptyMediaVariant::Icon).size_12().child(Icon::new(self.icon).size_6()))
+            .title(EmptyTitle::new().text_lg().child(self.title))
+            .description(EmptyDescription::new().text_base().child(self.description));
+        v_flex().size_full().items_center().justify_center().child(Empty::new().flex_none().header(header))
+    }
+}
+
+/// Seconds as `1 h 02 min`, `3 min 05 s`, `4.20 s` or `33 ms`.
 pub fn duration(seconds: f64) -> String {
     let s = seconds.max(0.0);
     if s >= 3600.0 {
         format!("{} h {:02} min", (s / 3600.0) as u64, ((s % 3600.0) / 60.0) as u64)
     } else if s >= 60.0 {
         format!("{} min {:02} s", (s / 60.0) as u64, (s % 60.0) as u64)
-    } else {
+    } else if s >= 1.0 {
         format!("{s:.2} s")
+    } else {
+        format!("{:.0} ms", s * 1e3)
     }
 }
 
@@ -90,6 +119,7 @@ mod tests {
     #[test]
     fn test_duration() {
         assert_eq!(duration(4.2), "4.20 s");
+        assert_eq!(duration(0.0333), "33 ms");
         assert_eq!(duration(185.0), "3 min 05 s");
         assert_eq!(duration(2832.7), "47 min 12 s");
         assert_eq!(duration(3725.0), "1 h 02 min");

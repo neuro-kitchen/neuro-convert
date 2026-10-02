@@ -13,7 +13,7 @@ use gpui_kit::{div, px, AnyElement, Context, Entity, InteractiveElement as _, In
 
 use crate::domain::format::AgeUnit;
 use crate::viewmodels::metadata::{Field, MetadataVm};
-use crate::widgets::{Card, FormRow, MenuSelect, Muted, SuggestInput};
+use crate::widgets::{Card, FormRow, MenuSelect, Muted, PickInput, SuggestInput};
 
 pub struct MetadataView {
     vm: Entity<MetadataVm>,
@@ -35,7 +35,9 @@ impl MetadataView {
             Input::new(state).id(SharedString::from(f.id())).small().into_any_element()
         } else {
             let handle = self.vm.clone();
-            SuggestInput::new(f.id(), state, suggestions, move |v, window, cx| handle.update(cx, |vm, cx| vm.pick(f, v, window, cx))).into_any_element()
+            let pick = move |v, window: &mut Window, cx: &mut gpui_kit::App| handle.update(cx, |vm, cx| vm.pick(f, v, window, cx));
+            // A list field adds what is picked, so it stays a text box; one value is a dropdown
+            if f == Field::Experimenters { SuggestInput::new(f.id(), state, suggestions, pick).into_any_element() } else { PickInput::new(f.id(), state, suggestions, pick).into_any_element() }
         };
         FormRow::new(f.label(), control).required(f.required()).help(f.help()).issues(vm.issues(f.path(), cx)).into_any_element()
     }

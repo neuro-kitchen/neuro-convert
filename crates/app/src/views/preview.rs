@@ -21,12 +21,15 @@ use gpui_kit::{
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, Subscription, Window,
 };
 
-use crate::viewmodels::preview::LANE_CHOICES;
+use crate::viewmodels::preview::{window_label, LANE_CHOICES};
 use crate::viewmodels::PreviewVm;
-use crate::widgets::{MenuSelect, Muted, ProbeMap, Traces};
+use crate::widgets::{MenuSelect, Muted, ProbeMap, Traces, PROBE_MAP_WIDTH};
 
 /// Width of the channel label column.
 const LABELS: f32 = 84.;
+/// Channel scrollbar width, and the gap between the trace area and what is beside it.
+const SCROLLBAR: f32 = 8.;
+const GAP: f32 = 4.;
 /// Pixels of an overview window edge that resize instead of move.
 const EDGE: f32 = 5.;
 
@@ -283,14 +286,7 @@ impl Render for PreviewView {
         let (start, span, total) = (vm.start, vm.span, vm.duration().max(1e-9));
         let shown_channels = vm.visible_channels();
         let all = vm.set_channels().len();
-        let window_text = format!(
-            "{:.3}–{:.3} s of {:.1} s · channels {}–{} of {all}",
-            start,
-            start + span,
-            info.duration(),
-            vm.first + 1,
-            vm.first + shown_channels.len()
-        );
+        let window_text = format!("{} · channels {}–{} of {all}", window_label(start, span, info.duration()), vm.first + 1, vm.first + shown_channels.len());
         let status = vm.error.clone().map(|e| (true, e)).or_else(|| vm.waiting.then(|| (false, "reading…".to_string())));
         let lanes = vm.visible();
         let scale = vm.scale(cx);
@@ -300,11 +296,13 @@ impl Render for PreviewView {
         let markers = vm.marker_positions(cx);
         let ticks = vm.ticks();
         let (first, lanes_n) = (vm.first, vm.lanes);
+        // The axis and overview span the traces only: not the scrollbar and probe map beside them
+        let beside = GAP + SCROLLBAR + if sites.is_empty() { 0. } else { GAP + PROBE_MAP_WIDTH };
 
         let traces = Traces::new(lanes, gain, fg).shared_peak(scale.as_ref().map(|s| s.0)).scale_bar(scale.as_ref().map(|s| s.1)).markers(markers, warning.opacity(0.7));
         let label_col = v_flex().w(px(LABELS)).flex_none().children(labels.into_iter().map(|l| div().flex_1().min_h_0().flex().items_center().text_xs().text_color(muted).overflow_hidden().child(l)));
         // Channel scrollbar: where the shown lanes are in the set
-        let scrollbar = div().id("preview-channel-scroll").test_support().relative().w(px(8.)).flex_none().h_full().cursor_pointer().child(measure(self.scrollbar.clone())).child(
+        let scrollbar = div().id("preview-channel-scroll").test_support().relative().w(px(SCROLLBAR)).flex_none().h_full().cursor_pointer().child(measure(self.scrollbar.clone())).child(
             canvas(
                 |_, _, _| (),
                 move |b: Bounds<Pixels>, _, window, _| {
@@ -327,7 +325,7 @@ impl Render for PreviewView {
             .flex_row()
             .flex_1()
             .min_h_0()
-            .gap_1()
+            .gap(px(GAP))
             .on_scroll_wheel(cx.listener(Self::on_wheel))
             .on_key_down(cx.listener(Self::on_key))
             .child(label_col)
@@ -342,10 +340,10 @@ impl Render for PreviewView {
             )
             .child(scrollbar)
             .when(!sites.is_empty(), |this| this.child(ProbeMap::new(sites, muted, accent)));
-        let axis = h_flex().h(px(16.)).child(div().w(px(LABELS + 4.)).flex_none()).child(
+        let axis = h_flex().h(px(16.)).child(div().w(px(LABELS + GAP)).flex_none()).child(
             div().relative().flex_1().h_full().children(ticks.into_iter().map(|(x, label)| div().absolute().left(relative(x)).top_0().text_xs().text_color(muted).child(label))),
-        );
-        let overview = h_flex().h(px(14.)).child(div().w(px(LABELS + 4.)).flex_none()).child(
+        ).child(div().w(px(beside)).flex_none());
+        let overview = h_flex().h(px(14.)).child(div().w(px(LABELS + GAP)).flex_none()).child(
             div().id("preview-overview").test_support().relative().flex_1().h_full().cursor(CursorStyle::ResizeLeftRight).child(measure(self.overview.clone())).child(
                 canvas(
                     |_, _, _| (),
@@ -364,7 +362,7 @@ impl Render for PreviewView {
                 )
                 .size_full(),
             ),
-        );
+        ).child(div().w(px(beside)).flex_none());
         let legend = match &scale {
             Some((_, _, label)) => format!("Scale bar (right) = {label} · one scale for all channels · values in {}", info.unit),
             None => format!("Each channel fitted to its own peak × gain · values in {}", info.unit),

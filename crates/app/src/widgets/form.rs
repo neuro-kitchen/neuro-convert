@@ -1,12 +1,13 @@
 //! Form pieces: a card, a labelled row that shows its issues (red outline + message), a dropdown
-//! of fixed options, and a text input with suggestions (type anything or pick).
+//! of fixed options, a dropdown of common values with "Other…" revealing a text box, and a text
+//! input with suggestions (lists, where typing adds to the value).
 
 use std::rc::Rc;
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
-use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _};
+use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Disableable as _, IconName, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::{
     div, px, AnyElement, App, ElementId, Entity, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
@@ -146,18 +147,34 @@ pub struct MenuSelect {
     options: Vec<SharedString>,
     selected: Option<usize>,
     on_pick: OnPick,
+    /// Spans its row (form fields) instead of hugging its label (toolbars).
+    full: bool,
+    disabled: bool,
 }
 
 impl MenuSelect {
     pub fn new(id: impl Into<ElementId>, current: impl Into<SharedString>, options: Vec<SharedString>, selected: Option<usize>, on_pick: impl Fn(usize, &mut Window, &mut App) + 'static) -> Self {
-        Self { id: id.into(), current: current.into(), options, selected, on_pick: Rc::new(on_pick) }
+        Self { id: id.into(), current: current.into(), options, selected, on_pick: Rc::new(on_pick), full: false, disabled: false }
+    }
+
+    pub fn full_width(mut self) -> Self {
+        self.full = true;
+        self
+    }
+
+    /// Shown greyed out with its value; does not open.
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
     }
 }
 
 impl RenderOnce for MenuSelect {
     fn render(self, _: &mut Window, _: &mut App) -> impl IntoElement {
-        let Self { id, current, options, selected, on_pick } = self;
-        Button::new(id).outline().small().label(current).dropdown_caret(true).dropdown_menu(move |menu, _, _| {
+        let Self { id, current, options, selected, on_pick, full, disabled } = self;
+        // A bordered bar with a caret and a hand cursor: it reads as something to press
+        let button = Button::new(id).outline().small().label(current).dropdown_caret(true).disabled(disabled).when(!disabled, |b| b.cursor_pointer()).when(full, |b| b.w_full());
+        button.dropdown_menu(move |menu, _, _| {
             let mut menu = menu.scrollable(true).max_h(px(360.));
             for (i, label) in options.iter().enumerate() {
                 let on_pick = on_pick.clone();
@@ -165,6 +182,79 @@ impl RenderOnce for MenuSelect {
             }
             menu
         })
+    }
+}
+
+/// One value from a list of common ones: a dropdown bar; its last entry, "Other…", shows a text
+/// box under it for anything else (also shown while the value is not in the list).
+#[derive(IntoElement)]
+pub struct PickInput {
+    id: SharedString,
+    state: Entity<InputState>,
+    /// (label, value)
+    options: Vec<(String, String)>,
+    placeholder: SharedString,
+    on_pick: OnPickValue,
+}
+
+impl PickInput {
+    pub fn new(id: impl Into<SharedString>, state: &Entity<InputState>, options: Vec<(String, String)>, on_pick: impl Fn(String, &mut Window, &mut App) + 'static) -> Self {
+        Self { id: id.into(), state: state.clone(), options, placeholder: "Choose…".into(), on_pick: Rc::new(on_pick) }
+    }
+
+    /// Picking replaces the input's text.
+    pub fn replacing(id: impl Into<SharedString>, state: &Entity<InputState>, options: Vec<String>) -> Self {
+        let target = state.clone();
+        Self::new(id, state, options.into_iter().map(|v| (v.clone(), v)).collect(), move |v, window, cx| target.update(cx, |s, cx| s.replace_all(v, window, cx)))
+    }
+
+    /// Shown on the bar while there is no value.
+    pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
+        self.placeholder = placeholder.into();
+        self
+    }
+}
+
+impl RenderOnce for PickInput {
+    fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let Self { id, state, options, placeholder, on_pick } = self;
+        // "Other…" was chosen (kept while this field is on screen)
+        let other = window.use_keyed_state(ElementId::Name(format!("{id}-other").into()), cx, |_, _| false);
+        let value = state.read(cx).value().to_string();
+        let known = options.iter().find(|(_, v)| *v == value).map(|(l, _)| l.clone());
+        let typing = *other.read(cx) || (!value.trim().is_empty() && known.is_none());
+        let label: SharedString = match (&known, typing) {
+            (Some(l), false) => l.clone().into(),
+            (_, true) => "Other…".into(),
+            (None, false) => placeholder,
+        };
+        let picked = options.iter().position(|(_, v)| *v == value).filter(|_| !typing);
+        let mut labels: Vec<SharedString> = options.iter().map(|(l, _)| SharedString::from(l.clone())).collect();
+        labels.push("Other…".into());
+        let selected = if typing { Some(options.len()) } else { picked };
+        let (input_state, other_flag, clear) = (state.clone(), other.clone(), known.is_some());
+        let select = MenuSelect::new(ElementId::Name(id.clone()), label, labels, selected, move |i, window, cx| match options.get(i) {
+            Some((_, v)) => {
+                other_flag.update(cx, |o, _| *o = false);
+                on_pick(v.clone(), window, cx);
+            }
+            None => {
+                other_flag.update(cx, |o, _| *o = true);
+                // Start from an empty box rather than the listed value it replaces
+                input_state.update(cx, |s, cx| {
+                    if clear {
+                        s.replace_all("", window, cx);
+                    }
+                    s.focus(window, cx);
+                });
+            }
+        })
+        .full_width();
+        v_flex()
+            .w_full()
+            .gap_1()
+            .child(select)
+            .when(typing, |this| this.child(Input::new(&state).id(ElementId::Name(format!("{id}-text").into())).small()))
     }
 }
 
@@ -181,12 +271,6 @@ pub struct SuggestInput {
 impl SuggestInput {
     pub fn new(id: impl Into<SharedString>, state: &Entity<InputState>, suggestions: Vec<(String, String)>, on_pick: impl Fn(String, &mut Window, &mut App) + 'static) -> Self {
         Self { id: id.into(), state: state.clone(), suggestions, on_pick: Rc::new(on_pick) }
-    }
-
-    /// Picking replaces the input's text.
-    pub fn replacing(id: impl Into<SharedString>, state: &Entity<InputState>, suggestions: Vec<String>) -> Self {
-        let target = state.clone();
-        Self::new(id, state, suggestions.into_iter().map(|v| (v.clone(), v)).collect(), move |v, window, cx| target.update(cx, |s, cx| s.replace_all(v, window, cx)))
     }
 }
 

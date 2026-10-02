@@ -9,8 +9,13 @@ license.workspace = true
 name = "neuro-convert-app"
 path = "src/main.rs"
 
+[features]
+# NWB/HDF5 output (`.nwb`) next to Zarr: system HDF5, or built from source
+hdf5 = ["nc-convert/hdf5"]
+hdf5-static = ["nc-convert/hdf5-static"]
+
 [dependencies]
-nc-convert = { workspace = true, features = ["tdt", "spikeglx", "intan", "openephys", "nwb"] }
+nc-convert = { workspace = true, features = ["tdt", "spikeglx", "intan", "openephys", "blackrock", "neuralynx", "nwb"] }
 gpui-kit.workspace = true
 async-channel.workspace = true
 chrono.workspace = true

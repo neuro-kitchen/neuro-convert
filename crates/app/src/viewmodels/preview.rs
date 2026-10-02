@@ -26,6 +26,24 @@ pub const LANES: usize = 16;
 pub const LANE_CHOICES: [usize; 5] = [4, 8, 16, 32, 64];
 /// Recent results kept.
 const CACHE: usize = 16;
+/// Time shown when a stream opens (less for shorter recordings).
+pub const SPAN: f64 = 1.0;
+/// Shortest time shown.
+const MIN_SPAN: f64 = 0.002;
+
+/// The window a stream opens with: [`SPAN`], or the whole recording when it is shorter.
+pub fn initial_span(duration: f64) -> f64 {
+    SPAN.min(duration).max(MIN_SPAN)
+}
+
+/// `0.000–1.000 s of 12.50 s`; milliseconds for recordings under a second (`0.0–30.0 ms of 30.0 ms`).
+pub fn window_label(start: f64, span: f64, total: f64) -> String {
+    if total < 1.0 {
+        format!("{:.1}–{:.1} ms of {:.1} ms", start * 1e3, (start + span) * 1e3, total * 1e3)
+    } else {
+        format!("{:.3}–{:.3} s of {:.2} s", start, start + span, total)
+    }
+}
 
 /// A choice in the channel dropdown.
 #[derive(Debug, Clone, PartialEq)]
@@ -162,6 +180,7 @@ impl PreviewVm {
                         if *event == AppEvent::RecordingOpened {
                             this.marker = None;
                         }
+                        this.span = initial_span(rec.as_ref().map_or(SPAN, |r| r.info().duration()));
                         this.recording = rec;
                         this.start = 0.0;
                         this.set = 0;
@@ -181,7 +200,7 @@ impl PreviewVm {
             reply,
             recording: None,
             start: 0.0,
-            span: 1.0,
+            span: SPAN,
             sets: Vec::new(),
             set: 0,
             first: 0,
@@ -351,8 +370,8 @@ impl PreviewVm {
 
     /// Shows `[start, start + span)` (clamped to the recording).
     pub fn set_view(&mut self, start: f64, span: f64, cx: &mut Context<Self>) {
-        let d = self.duration().max(0.002);
-        self.span = span.clamp(0.002, d);
+        let d = self.duration().max(MIN_SPAN);
+        self.span = span.clamp(MIN_SPAN, d);
         self.start = start.clamp(0.0, (d - self.span).max(0.0));
         self.request(cx);
     }
@@ -366,7 +385,7 @@ impl PreviewVm {
     /// view) in place.
     pub fn zoom_at(&mut self, factor: f64, anchor: f64, cx: &mut Context<Self>) {
         let at = self.start + anchor.clamp(0.0, 1.0) * self.span;
-        let span = (self.span * factor).clamp(0.002, self.duration().max(0.002));
+        let span = (self.span * factor).clamp(MIN_SPAN, self.duration().max(MIN_SPAN));
         self.set_view(at - anchor.clamp(0.0, 1.0) * span, span, cx);
     }
 
@@ -417,6 +436,13 @@ mod tests {
         assert_eq!(sets[0].channels, (0..40).collect::<Vec<_>>());
 
         assert_eq!(markers(&[0.1, 0.5, 1.2, 1.4, 3.0], 1.0, 1.0), vec![0.2, 0.4]);
+
+        // Short recordings open whole; long ones with one second
+        assert_eq!(initial_span(0.03), 0.03);
+        assert_eq!(initial_span(10.0), 1.0);
+        assert_eq!(initial_span(0.0), MIN_SPAN);
+        assert_eq!(window_label(0.0, 0.03, 0.03), "0.0–30.0 ms of 30.0 ms");
+        assert_eq!(window_label(2.0, 1.0, 12.5), "2.000–3.000 s of 12.50 s");
         assert_eq!(peak(&[vec![(-2.0, 1.0)], vec![(f32::NAN, f32::NAN), (0.0, 3.0)]]), 3.0);
     }
 
