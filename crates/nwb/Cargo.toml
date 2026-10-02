@@ -1,7 +1,8 @@
 [package]
 name = "nc-nwb"
 description = "neuro-convert NWB 2.11 writer (Zarr v3 store in hdmf-zarr's layout; HDF5 with the `hdf5` feature)"
-version.workspace = true
+# This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 

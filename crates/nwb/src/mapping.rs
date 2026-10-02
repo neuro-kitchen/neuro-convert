@@ -19,6 +19,10 @@ pub struct FileFields {
     pub institution: Option<String>,
     pub keywords: Vec<String>,
     pub notes: Option<String>,
+    /// What wrote the file (`/general/source_script`): program, reader and writer versions; its
+    /// `file_name` attribute is the program. Set by the conversion job.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_script: Option<(String, String)>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize)]

@@ -44,6 +44,11 @@ pub fn write_root(b: &dyn Backend, plan: &NwbPlan) -> Result<()> {
     if !f.keywords.is_empty() {
         b.strings("/general/keywords", &f.keywords, "num_keywords", Attrs::new())?;
     }
+    if let Some((script, file_name)) = &f.source_script {
+        let mut a = str_attrs();
+        a.insert("file_name".into(), json!(file_name));
+        b.string("/general/source_script", script, a)?;
+    }
     Ok(())
 }
 
