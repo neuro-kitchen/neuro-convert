@@ -4,6 +4,15 @@
 //! [`write`] writes that plan through a storage [`backend`] (Zarr today), streaming continuous
 //! data in parallel chunks. Nothing here knows which reader produced the session.
 
+/// This crate's version (`nc-nwb`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod backend;
 pub mod integrity;
 pub mod mapping;
