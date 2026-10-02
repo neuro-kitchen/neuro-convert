@@ -1,0 +1,13 @@
+[package]
+name = "nc-neuralynx"
+description = "neuro-convert reader for Neuralynx recordings (Cheetah / Pegasus / BML / Neuraview: .ncs, .nse, .ntt, .nev)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nc-base.workspace = true
+nc-core.workspace = true
+
+[dev-dependencies]
+nc-core = { workspace = true, features = ["testkit"] }
