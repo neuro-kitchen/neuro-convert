@@ -42,6 +42,14 @@ impl Registry {
         {
             r = r.with(nc_openephys::OpenEphys);
         }
+        #[cfg(feature = "blackrock")]
+        {
+            r = r.with(nc_blackrock::Blackrock);
+        }
+        #[cfg(feature = "neuralynx")]
+        {
+            r = r.with(nc_neuralynx::Neuralynx);
+        }
         r
     }
 

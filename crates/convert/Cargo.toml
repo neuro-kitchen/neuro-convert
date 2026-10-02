@@ -6,12 +6,17 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-default = ["tdt", "spikeglx", "intan", "openephys", "nwb"]
+default = ["tdt", "spikeglx", "intan", "openephys", "blackrock", "neuralynx", "nwb"]
 tdt = ["dep:nc-tdt"]
 spikeglx = ["dep:nc-spikeglx"]
 intan = ["dep:nc-intan"]
 openephys = ["dep:nc-openephys"]
+blackrock = ["dep:nc-blackrock"]
+neuralynx = ["dep:nc-neuralynx"]
 nwb = ["dep:nc-nwb"]
+# NWB/HDF5 output (`.nwb`): system HDF5, or built from source
+hdf5 = ["nwb", "nc-nwb/hdf5"]
+hdf5-static = ["nwb", "nc-nwb/hdf5-static"]
 
 [dependencies]
 nc-base.workspace = true
@@ -20,6 +25,8 @@ nc-tdt = { workspace = true, optional = true }
 nc-spikeglx = { workspace = true, optional = true }
 nc-intan = { workspace = true, optional = true }
 nc-openephys = { workspace = true, optional = true }
+nc-blackrock = { workspace = true, optional = true }
+nc-neuralynx = { workspace = true, optional = true }
 nc-nwb = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
