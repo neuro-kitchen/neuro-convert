@@ -1,7 +1,8 @@
-# Open Ephys binary format (`nc-openephys`)
+# Open Ephys binary and legacy formats (`nc-openephys`)
 
-Recordings saved by the Open Ephys GUI in its **binary** format (GUI 0.4.4 – 0.6+). The legacy
-`.continuous` format and the GUI's own NWB format are not read (the latter is already NWB).
+Recordings saved by the Open Ephys GUI in its **binary** format (GUI 0.4.4 – 0.6+) and in the
+**legacy** format (one `.continuous` file per channel; see "Legacy format" below). The GUI's own
+NWB format is not read (it is already NWB).
 
 ## What to open
 The save folder, a record node, an experiment or one recording folder (or its
@@ -69,4 +70,31 @@ the synchronized `timestamps.npy`, before against neo) and the number of TTL per
 messages), `v0.5.x_two_nodes` (two record nodes × three recordings), `neural_and_non_neural_data_mixed`
 (0.4.5, headstage + ADC): all equal. Test data → `data/raw/openephys/`.
 
-Not yet: legacy `.continuous` format, spikes, OneBox ADC streams, joining recordings.
+## Legacy format (`legacy.rs`)
+Files (each with a 1024-byte text header `header.key = value;`):
+
+| File | Content | Becomes |
+|---|---|---|
+| `<proc>_[<source>_]CH<n>[_<start>].continuous` | records: int64 first sample number, uint16 count (1024), uint16 recording number, 1024 big-endian int16, 10-byte marker | `<Processor>-<proc>` (electrical, `bitVolts` µV) |
+| `…AUX<n>…` / `…ADC<n>…` `.continuous` | same | `<Processor>-<proc>.analog` (`bitVolts` V) |
+| `all_channels[_<start>].events` | 16-byte records; type 3 = TTL, id 1 / 0 = rising / falling, channel 0-based | `<Processor>-<proc> TTL <channel + 1>` (high periods) |
+| `messages[_<start>].events` | `<sample number> <text>` lines | `messages` (labelled, sorted by time) |
+| `<electrode>[_<start>].spikes` | spike records (n channels × m samples uint16, offset 32768; gains per channel) | snippet store `<electrode>`, one snippet per channel of each spike (channels 1…n), sort code = sorted id, volts = (raw − 32768) / gain / 1000 |
+
+- Every acquisition start (no suffix, `_2`, `_3`, …; `settings_<n>.xml`) is a container
+  `experiment<n>` (neo's segments); several record-node folders prefix it
+  (`Record Node 120/experiment1`). The processor name comes from `settings.xml`
+  (`<PROCESSOR name="Sources/Rhythm FPGA" NodeId="100">` → `Rhythm_FPGA-100`) or the file name.
+- Records may have gaps (a paused recording): missing samples read as 0, with a warning (as
+  neo). Channel files covering different samples are clipped to the common range (as neo; e.g.
+  `OpenEphys_SampleData_3` `CH32`, which neo refuses to open).
+- Times: sample number / rate, relative to the start's first sample. Spikes need an electrode
+  group in the metadata (`snippets: { '*': { electrode_group: … } }`) to be written.
+- Verified with `tools/python/compare_openephys_legacy.py` against neo's `OpenEphysRawIO`
+  through NWB, 2026-10-02: `OpenEphys_SampleData_1` (2 ch with gaps, 454 stereotrode spikes),
+  `OpenEphys_SampleData_2_(multiple_starts)` (2 starts, 265 + 74 spikes), `OpenEphys_SampleData_3`
+  (2 starts, 5 TTL lines; compared without CH32): every sample, TTL onset and spike waveform /
+  time equal. neo's spike API returns nothing for legacy files (it compares the integer sorted id
+  with a string), so spikes are compared with its memory map and scaling.
+
+Not yet: binary-format spikes, OneBox ADC streams, joining recordings.

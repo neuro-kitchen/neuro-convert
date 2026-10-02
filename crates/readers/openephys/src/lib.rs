@@ -17,9 +17,12 @@
 //! synchronized timestamps; before, sample numbers / rate); TTL lines become events (high
 //! periods), messages become labelled events.
 //!
-//! Not yet: the legacy `.continuous` format, spikes, OneBox ADC streams, Open Ephys's own NWB
-//! format (already NWB).
+//! The legacy format (one `.continuous` file per channel, `.events`, `.spikes`) is read by
+//! [`legacy`]; each acquisition start is a container.
+//!
+//! Not yet: binary-format spikes, OneBox ADC streams, Open Ephys's own NWB format (already NWB).
 
+pub mod legacy;
 pub mod npy;
 pub mod settings;
 
@@ -87,12 +90,20 @@ impl Reader for OpenEphys {
         &[
             "Binary format, GUI 0.4.4 – 0.6+ (sample_numbers.npy from 0.6, timestamps.npy before)",
             "Continuous streams (headstage / Neuropixels / NI-DAQ), TTL events, text messages",
+            "Legacy format (.continuous / .events / .spikes, GUI ≤ 0.4.x): channels, TTL events, messages, spikes; one container per start",
         ]
     }
 
     fn detect(&self, path: &Path) -> Option<Detection> {
         let recs = recordings(path);
-        let first = recs.first()?;
+        let Some(first) = recs.first() else {
+            let starts: usize = legacy::folders(path).iter().map(|d| legacy::starts(d).len()).sum();
+            return (starts > 0).then(|| Detection {
+                format: "openephys",
+                version: Some(format!("legacy format{}", if starts > 1 { format!(", {starts} recordings") } else { String::new() })),
+                confidence: 0.9,
+            });
+        };
         let oebin: Value = serde_json::from_str(&std::fs::read_to_string(first.join("structure.oebin")).ok()?).ok()?;
         let version = oebin.get("GUI version").and_then(Value::as_str).map(|v| format!("GUI {v}{}", if recs.len() > 1 { format!(", {} recordings", recs.len()) } else { String::new() }));
         Some(Detection { format: "openephys", version, confidence: 0.95 })
@@ -100,11 +111,31 @@ impl Reader for OpenEphys {
 
     fn containers(&self, path: &Path) -> Vec<String> {
         let recs = recordings(path);
+        if recs.is_empty() {
+            let names = legacy_containers(path);
+            return if names.len() > 1 { names.into_iter().map(|(n, _, _)| n).collect() } else { Vec::new() };
+        }
         if recs.len() > 1 { recs.iter().map(|r| container_name(path, r)).collect() } else { Vec::new() }
     }
 
     fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
         let recs = recordings(path);
+        if recs.is_empty() {
+            let all = legacy_containers(path);
+            let chosen = match (&options.block, all.len()) {
+                (Some(name), _) => all.iter().find(|(n, _, _)| n == name).ok_or_else(|| Error::Unsupported(format!("{name}: no such recording in {}", path.display())))?,
+                (None, 1) => &all[0],
+                (None, 0) => return Err(Error::format("openephys", format!("no structure.oebin or .continuous files in {}", path.display()))),
+                (None, n) => {
+                    return Err(Error::Unsupported(format!(
+                        "{} holds {n} Open Ephys recordings; choose one with --block <name>: {}",
+                        path.display(),
+                        all.iter().map(|(n, _, _)| n.as_str()).collect::<Vec<_>>().join(", ")
+                    )))
+                }
+            };
+            return legacy::open(&chosen.1, chosen.2, options);
+        }
         let rec = match (&options.block, recs.len()) {
             (Some(name), _) => recs.iter().find(|r| &container_name(path, r) == name).cloned().ok_or_else(|| Error::Unsupported(format!("{name}: no such recording in {}", path.display())))?,
             (None, 1) => recs[0].clone(),
@@ -119,6 +150,22 @@ impl Reader for OpenEphys {
         };
         open_recording(&rec, options)
     }
+}
+
+/// Legacy containers: (name, folder, start). `experiment<n>`, prefixed by the folder when the
+/// opened path holds several (`Record Node 120/experiment1`).
+fn legacy_containers(path: &Path) -> Vec<(String, PathBuf, u32)> {
+    let root = if path.is_file() { path.parent().unwrap_or(path) } else { path };
+    let dirs = legacy::folders(path);
+    let mut out = Vec::new();
+    for d in &dirs {
+        let rel = d.strip_prefix(root).ok().map(|r| r.to_string_lossy().into_owned()).filter(|r| !r.is_empty());
+        for start in legacy::starts(d) {
+            let name = rel.as_ref().map_or_else(|| format!("experiment{start}"), |r| format!("{r}/experiment{start}"));
+            out.push((name, d.clone(), start));
+        }
+    }
+    out
 }
 
 /// int16 samples interleaved per sample in `continuous.dat`; a recording uses some columns.
