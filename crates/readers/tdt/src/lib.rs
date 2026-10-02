@@ -398,7 +398,7 @@ mod tests {
         let online = conform(&tank, OpenOptions { block: Some("b1".into()), ..Default::default() });
         let sn = &online.snippets[0];
         assert_eq!((sn.len(), sn.samples_per_snippet, sn.channels.clone()), (3, 4, vec![1, 2, 3]));
-        assert_eq!(&sn.data[4..8], &[10.0, 11.0, 12.0, 13.0]);
+        assert_eq!(sn.read(&[1]).unwrap(), vec![10.0, 11.0, 12.0, 13.0]);
         assert_eq!(sn.sort_codes, vec![1, 1, 1]);
         assert_eq!(online.metadata.extra["tdt_sorts"], "Mine");
 

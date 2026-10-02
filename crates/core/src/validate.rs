@@ -78,8 +78,8 @@ impl Session {
             if s.channels.len() != n || s.sort_codes.len() != n {
                 err(format!("{what}: {n} timestamps but {} channels and {} sort codes", s.channels.len(), s.sort_codes.len()));
             }
-            if s.data.len() != n * s.samples_per_snippet {
-                err(format!("{what}: {} values for {n} snippets × {} samples", s.data.len(), s.samples_per_snippet));
+            if s.waveforms.count() != n {
+                err(format!("{what}: {} waveforms for {n} snippets", s.waveforms.count()));
             }
             if n > 0 && !(s.sample_rate.is_finite() && s.sample_rate > 0.0) {
                 err(format!("{what}: sample rate {} is not positive", s.sample_rate));
@@ -179,7 +179,7 @@ mod tests {
         s.recordings.push(Arc::new(MemoryRecording::new("A", vec![0.0; 4], 2, 10.0, "V").unwrap()));
         s.recordings.push(Arc::new(MemoryRecording::new("A", vec![0.0; 2], 1, 0.0, "V").unwrap()));
         s.events.push(EventSeries { name: "E".into(), onsets: vec![0.2, 0.1], offsets: Some(vec![0.1, 0.3]), values: vec![1.0], channels: 1, ..Default::default() });
-        s.snippets.push(SnippetSeries { name: "S".into(), timestamps: vec![0.1], channels: vec![1], sort_codes: vec![], samples_per_snippet: 2, data: vec![0.0; 2], sample_rate: 1.0, electrodes: [(1, 5)].into(), ..Default::default() });
+        s.snippets.push(SnippetSeries { name: "S".into(), timestamps: vec![0.1], channels: vec![1], sort_codes: vec![], samples_per_snippet: 2, waveforms: std::sync::Arc::new(crate::MemoryWaveforms::new(2, vec![0.0; 2])), sample_rate: 1.0, electrodes: [(1, 5)].into(), ..Default::default() });
         s.electrodes.push(Electrode { name: "e".into(), group: "missing".into(), channels: vec![ChannelRef { recording: "A".into(), channel: 9 }], ..Default::default() });
         let e = errors(&s).join("\n");
         for want in [

@@ -12,6 +12,12 @@ pub struct MappedFile {
     map: Mmap,
 }
 
+impl std::fmt::Debug for MappedFile {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MappedFile").field("bytes", &self.map.len()).finish()
+    }
+}
+
 impl MappedFile {
     pub fn open(path: &Path) -> Result<Self> {
         let file = File::open(path).map_err(|e| Error::io(path, e))?;

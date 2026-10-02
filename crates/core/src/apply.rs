@@ -169,6 +169,8 @@ mod tests {
             sample_rate: 1000.0,
             timestamps: (0..channels.len()).map(|i| i as f64 * 0.1).collect(),
             sort_codes: vec![0; channels.len()],
+            waveforms: Arc::new(crate::MemoryWaveforms::new(1, vec![0.0; channels.len()])),
+            samples_per_snippet: 1,
             channels,
             ..Default::default()
         };

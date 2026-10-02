@@ -44,5 +44,5 @@ pub use provenance::{Checksum, Provenance, SourceFile};
 pub use reader::{Detection, Reader};
 pub use recording::{check_read, Calibration, ChannelInfo, Recording, RecordingInfo, SignalKind};
 pub use session::Session;
-pub use snippets::SnippetSeries;
+pub use snippets::{MemoryWaveforms, SnippetSeries, Waveforms, SNIPPET_BLOCK};
 pub use table::Table;
