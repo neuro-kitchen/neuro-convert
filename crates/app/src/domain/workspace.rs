@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use nc_convert::core::{ItemKind, MetadataFile, OpenOptions, Session};
-use nc_convert::nwb::{self, ChunkPolicy, NwbOptions, NwbPlan, Progress};
+use nc_convert::nwb::{self, ChunkPolicy, NwbOptions, NwbPlan, Progress, VerifyLevel};
 use nc_convert::{CancelToken, Event, Job, Registry, Report, Stage};
 
 use super::events::{AppEvent, Events};
@@ -21,6 +21,8 @@ pub struct WriteOptions {
     pub gzip: Option<u32>,
     pub chunks: ChunkPolicy,
     pub threads: usize,
+    /// How much of the written data is compared with the source afterwards.
+    pub verify: VerifyLevel,
 }
 
 /// A path that holds several recordings: the user picks one.
@@ -66,6 +68,7 @@ impl Workspace {
             gzip: settings.gzip,
             chunks: if settings.auto_chunks { ChunkPolicy::Auto } else { ChunkPolicy::Seconds(1.0) },
             threads: nwb::available_threads(settings.reserved_threads),
+            verify: settings.verify,
         };
         Self {
             state: AppState::default(),
@@ -253,9 +256,18 @@ impl Workspace {
         }
         self.settings.gzip = options.gzip;
         self.settings.auto_chunks = options.chunks == ChunkPolicy::Auto;
+        self.settings.verify = options.verify;
         self.options = options;
         self.save_settings();
         Events::from([AppEvent::OptionsChanged])
+    }
+
+    /// Opens or closes side panels (remembered; views read `settings.panels`).
+    pub fn set_panels(&mut self, panels: crate::settings::Panels) {
+        if panels != self.settings.panels {
+            self.settings.panels = panels;
+            self.save_settings();
+        }
     }
 
     /// Whether DANDI recommendations count as issues (remembered).
@@ -314,7 +326,7 @@ impl Workspace {
         self.report = None;
         events.extend(Events::from([AppEvent::Status, AppEvent::WriteProgress]));
         let o = &self.options;
-        let options = NwbOptions { gzip: o.gzip, chunks: o.chunks, threads: o.threads.max(1), overwrite: true, cancel: None };
+        let options = NwbOptions { gzip: o.gzip, chunks: o.chunks, threads: o.threads.max(1), overwrite: true, verify: o.verify, ..NwbOptions::default() };
         Some(WriteTicket { job: self.job.take().expect("checked"), output, options, cancel })
     }
 
@@ -322,7 +334,11 @@ impl Workspace {
     pub fn write_event(&mut self, event: Event) -> Events {
         match event {
             Event::Progress(p) => self.progress = Some(p),
-            Event::Stage(s) => self.stage = Some(s),
+            Event::Stage(s) => {
+                // Each stage counts its own progress
+                self.stage = Some(s);
+                self.progress = None;
+            }
         }
         Events::from([AppEvent::WriteProgress])
     }

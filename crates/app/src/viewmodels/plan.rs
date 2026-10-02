@@ -3,7 +3,7 @@
 //! job is away writing.
 
 use gpui_kit::{Context, Entity, SharedString, Subscription};
-use nc_convert::core::{Level, Session};
+use nc_convert::core::{Level, Session, Target};
 use nc_convert::nwb::NwbPlan;
 
 use crate::domain::AppEvent;
@@ -25,7 +25,7 @@ pub struct PlanRows {
 
 impl PartialEq for PathRow {
     fn eq(&self, o: &Self) -> bool {
-        (&self.path, &self.source, &self.detail) == (&o.path, &o.source, &o.detail)
+        (&self.path, &self.source, &self.detail, &self.target) == (&o.path, &o.source, &o.detail, &o.target)
     }
 }
 
@@ -36,7 +36,7 @@ impl std::fmt::Debug for PathRow {
 }
 
 pub fn plan_rows(plan: &NwbPlan, s: &Session) -> PlanRows {
-    let row = |path: String, source: &str, detail: String| PathRow { path: path.into(), source: SharedString::from(source.to_string()), detail: detail.into() };
+    let row = |path: String, source: &str, detail: String, target: Target| PathRow { path: path.into(), source: SharedString::from(source.to_string()), detail: detail.into(), target: Some(target) };
     let mut issues: Vec<IssueRow> = plan.issues.iter().map(|i| IssueRow { error: i.level == Level::Error, text: i.message.clone().into(), target: i.target.clone() }).collect();
     issues.sort_by_key(|i| !i.error);
     let errors = issues.iter().filter(|i| i.error).count();
@@ -52,18 +52,18 @@ pub fn plan_rows(plan: &NwbPlan, s: &Session) -> PlanRows {
         .map(|p| {
             let i = s.recordings[p.recording].info();
             let kind = if p.electrodes.is_some() { "Electrical" } else { "TimeSeries" };
-            row(format!("/acquisition/{}", p.name), &p.source, format!("{kind} · {} ch · {}", i.channel_count(), p.unit))
+            row(format!("/acquisition/{}", p.name), &p.source, format!("{kind} · {} ch · {}", i.channel_count(), p.unit), Target::Stream(p.source.clone()))
         })
         .collect();
-    acquisition.extend(plan.events.iter().filter(|e| !e.table).map(|e| row(format!("/acquisition/{}", e.name), &e.source, "TimeSeries (scalars)".into())));
-    acquisition.extend(plan.snippets.iter().map(|p| row(format!("/acquisition/{}_ch*", p.name), &p.source, format!("SpikeEventSeries · {} ch", p.rows.len()))));
-    let events = plan.events.iter().filter(|e| e.table).map(|e| row(format!("/events/{}", e.name), &e.source, format!("{} rows", s.events[e.event].len()))).collect();
+    acquisition.extend(plan.events.iter().filter(|e| !e.table).map(|e| row(format!("/acquisition/{}", e.name), &e.source, "TimeSeries (scalars)".into(), Target::Event(e.source.clone()))));
+    acquisition.extend(plan.snippets.iter().map(|p| row(format!("/acquisition/{}_ch*", p.name), &p.source, format!("SpikeEventSeries · {} ch", p.rows.len()), Target::Snippet(p.source.clone()))));
+    let events = plan.events.iter().filter(|e| e.table).map(|e| row(format!("/events/{}", e.name), &e.source, format!("{} rows", s.events[e.event].len()), Target::Event(e.source.clone()))).collect();
     let mut other: Vec<PathRow> = plan
         .groups
         .iter()
-        .map(|g| row(format!("electrodes: {}", g.name), &g.device, format!("{} · {}", s.electrodes.iter().filter(|e| e.group == g.name).count(), g.location)))
+        .map(|g| row(format!("electrodes: {}", g.name), &g.device, format!("{} · {}", s.electrodes.iter().filter(|e| e.group == g.name).count(), g.location), Target::ElectrodeGroup(g.name.clone())))
         .collect();
-    other.extend(plan.tables.iter().map(|t| row(format!("/analysis/{}", t.name), &s.tables[t.table].name, "DynamicTable".into())));
+    other.extend(plan.tables.iter().map(|t| row(format!("/analysis/{}", t.name), &s.tables[t.table].name, "DynamicTable".into(), Target::Table(s.tables[t.table].name.clone()))));
     let count = |n: usize, one: &str, many: &str| format!("{n} {}", if n == 1 { one } else { many });
     let mut parts = vec![count(plan.series.len() + plan.events.iter().filter(|e| !e.table).count(), "series", "series")];
     let tables = plan.events.iter().filter(|e| e.table).count();
@@ -123,6 +123,7 @@ mod tests {
         let rows = plan_rows(ws.plan.as_ref().unwrap(), ws.session().unwrap());
         assert!(rows.errors >= 1 && rows.issues[0].error, "errors first: {:?}", rows.issues);
         assert_eq!(rows.sections[0].1.len(), 2, "two acquisition series");
+        assert_eq!(rows.sections[0].1[0].target, Some(Target::Stream("Wav1".into())), "rows link to their source");
         assert_eq!(rows.summary, "2 series · 1 event table");
         ws.set_included(ItemKind::Stream, &["Temp".into()], false);
         let rows = plan_rows(ws.plan.as_ref().unwrap(), ws.session().unwrap());

@@ -11,6 +11,24 @@ const RECENT: usize = 8;
 /// How many typed values are remembered per field.
 const REMEMBERED: usize = 12;
 
+/// Which side panels are open (remembered).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Panels {
+    /// Contents: the tree of the recording.
+    pub tree: bool,
+    /// Contents: the settings of the selected item.
+    pub inspector: bool,
+    /// Review: the NWB structure.
+    pub structure: bool,
+}
+
+impl Default for Panels {
+    fn default() -> Self {
+        Self { tree: true, inspector: true, structure: false }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -20,6 +38,8 @@ pub struct Settings {
     pub gzip: Option<u32>,
     /// ~10 MB chunks (`auto`) instead of 1 s.
     pub auto_chunks: bool,
+    /// How much written data is compared with the source (sampled: fast enough to always run).
+    pub verify: nc_convert::nwb::VerifyLevel,
     /// CPUs left free for the UI while converting.
     pub reserved_threads: usize,
     /// `light` / `dark`; `None` follows the system.
@@ -28,13 +48,14 @@ pub struct Settings {
     pub recent_metadata: Vec<PathBuf>,
     /// The user plans to upload to DANDI: its recommendations count as issues.
     pub dandi: bool,
+    pub panels: Panels,
     /// Values typed before, per field (`lab`, `species`, `location`, …), newest first.
     pub remembered: BTreeMap<String, Vec<String>>,
 }
 
 impl Default for Settings {
     fn default() -> Self {
-        Self { output_dir: None, gzip: Some(1), auto_chunks: false, reserved_threads: 2, theme: None, recent_recordings: Vec::new(), recent_metadata: Vec::new(), dandi: true, remembered: BTreeMap::new() }
+        Self { output_dir: None, gzip: Some(1), auto_chunks: false, verify: nc_convert::nwb::VerifyLevel::Sampled, reserved_threads: 2, theme: None, recent_recordings: Vec::new(), recent_metadata: Vec::new(), dandi: true, panels: Panels::default(), remembered: BTreeMap::new() }
     }
 }
 

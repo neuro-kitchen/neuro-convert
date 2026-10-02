@@ -184,7 +184,7 @@ pub struct MetadataVm {
 
 impl MetadataVm {
     pub fn new(store: Entity<Store>, nav: Entity<NavVm>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let start = cx.new(|cx| DatePickerState::new(window, cx).time_precision(TimePrecision::Second).date_format("%Y-%m-%d"));
+        let start = cx.new(|cx| DatePickerState::new(window, cx).time_precision(TimePrecision::Second).date_format("%Y-%m-%d %H:%M:%S"));
         let zones: Vec<SharedString> = TIME_ZONES.iter().map(|(z, p)| SharedString::from(zone_label(z, p))).collect();
         let zone = cx.new(|cx| SelectState::new(SearchableVec::new(zones), None, window, cx).searchable(true));
         let age = cx.new(|cx| InputState::new(window, cx).placeholder("e.g. 90"));
@@ -366,7 +366,7 @@ impl MetadataVm {
                 p.issues
                     .iter()
                     .filter(|i| i.target == target && crate::domain::steps::counts(i, ws.settings.dandi))
-                    .map(|i| (i.level == nc_convert::core::Level::Error, i.message.clone()))
+                    .map(|i| (i.level == nc_convert::core::Level::Error, crate::domain::format::plain_issue(&i.message)))
                     .collect()
             })
             .unwrap_or_default()

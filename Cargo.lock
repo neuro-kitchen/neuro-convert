@@ -4273,11 +4273,14 @@ version = "0.1.0"
 dependencies = [
  "nc-base",
  "nc-core",
+ "nc-intan",
  "nc-nwb",
+ "nc-openephys",
  "nc-spikeglx",
  "nc-tdt",
  "serde",
  "serde_json",
+ "sha1",
 ]
 
 [[package]]
@@ -4290,6 +4293,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nc-intan"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "nc-core",
+]
+
+[[package]]
 name = "nc-nwb"
 version = "0.1.0"
 dependencies = [
@@ -4298,7 +4309,18 @@ dependencies = [
  "serde",
  "serde_json",
  "uuid",
+ "xxhash-rust",
  "zarrs",
+]
+
+[[package]]
+name = "nc-openephys"
+version = "0.1.0"
+dependencies = [
+ "nc-base",
+ "nc-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6526,6 +6548,17 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml",
+]
+
+[[package]]
+name = "sha1"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aacc4cc499359472b4abe1bf11d0b12e688af9a805fa5e3016f9a386dc2d0214"
+dependencies = [
+ "cfg-if",
+ "cpufeatures 0.3.1",
+ "digest 0.11.3",
 ]
 
 [[package]]
@@ -9026,6 +9059,12 @@ name = "xmlwriter"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
+
+[[package]]
+name = "xxhash-rust"
+version = "0.8.19"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "550a2b930b62486a393c52d5c3b84bff264b28aa437ed64694d31e93b1757af7"
 
 [[package]]
 name = "y4m"
