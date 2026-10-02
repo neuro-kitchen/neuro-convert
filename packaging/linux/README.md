@@ -1,7 +1,8 @@
 # Linux packaging
 
-Status: the desktop entry is ready (validated with `desktop-file-validate`); no package is built
-yet. Building and testing a Flatpak or AppImage is open work.
+Status: the desktop entry is ready (validated with `desktop-file-validate`).
+`scripts/release.sh` builds a release archive (CLI + app, every reader, HDF5 built in) with this
+entry under `packaging/`; a Flatpak or AppImage is still open work.
 
 ## Install for the current user (no package)
 ```
