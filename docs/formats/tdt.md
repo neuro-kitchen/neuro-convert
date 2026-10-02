@@ -58,7 +58,7 @@ u16 reserved · u8 format (low 3 bits) · u8 decimate · u16 rate · padding`
 - A tank folder (sub-folders with a `.tsq`) opens one block: `--block <name>`, or its only block.
 
 ## Verification
-`tools/python/compare_tdt.py` compares every stream, epoc, scalar and snip store with
+`tools/python/compare tdt` compares every stream, epoc, scalar and snip store with
 `tdt.read_block`; 0 mismatches on the TDT example data (5 blocks, Synapse 37761–48218) and
 `15-25-33_meps` (all under `data/raw/tdt-examples/`). `crates/readers/tdt/tests/real_block.rs`
 pins a few of those values in `cargo test`.

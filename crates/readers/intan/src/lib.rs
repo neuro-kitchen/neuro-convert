@@ -19,6 +19,15 @@
 //! Not yet: joining the consecutive files of a traditional recording split by time (each file is
 //! a container), notch filtering (Intan's readers apply it on request; RHX ≥ 3 saves filtered data).
 
+/// This crate's version (`nc-intan`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod data;
 pub mod header;
 
@@ -96,6 +105,14 @@ fn layout(path: &Path, block: Option<&str>) -> Result<Layout> {
 impl Reader for Intan {
     fn name(&self) -> &'static str {
         "intan"
+    }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
     }
 
     fn description(&self) -> &'static str {

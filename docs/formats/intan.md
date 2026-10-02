@@ -60,7 +60,7 @@ that never go high are left out. Traditional and per-type files hold one 16-bit 
 - Timestamps are checked to count up by one; gaps are reported as warnings (not filled).
 
 ## Verification
-`tools/python/compare_intan.py` converts each recording to NWB, reads it back with pynwb and
+`tools/python/compare intan` converts each recording to NWB, reads it back with pynwb and
 compares every value of every stream with neo's `IntanRawIO`, and the digital onsets with neo's
 rising edges. Checked 2026-10-01 (neo from PyPI) on the GIN test files
 `intan_rhd_test_1.rhd` (RHD 1.5), `intan_rhs_test_1.rhs` (RHS 1.0),

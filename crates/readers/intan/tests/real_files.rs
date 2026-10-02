@@ -2,7 +2,7 @@
 //! traditional RHD 1.5 and RHS 1.0 files, RHX 3.3 one-file-per-signal-type (RHD, RHS) and
 //! one-file-per-channel (RHD). Skipped when `<data>/raw/intan` is missing (`$NC_DATA_DIR` or the
 //! workspace's git-ignored `data/`). Every value is cross-checked against neo by
-//! `tools/python/compare_intan.py`.
+//! `python tools/python/compare intan`.
 
 use std::path::{Path, PathBuf};
 

@@ -16,6 +16,15 @@
 //! earliest `Time Opened` / `TimeCreated` (local time of the recording computer). `.nvt` / `.nrd`
 //! are not read. A folder holding several sessions in sub-folders lists them as containers.
 
+/// This crate's version (`nc-neuralynx`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod header;
 pub mod ncs;
 
@@ -92,6 +101,14 @@ fn container_names(path: &Path) -> Vec<(String, PathBuf)> {
 impl Reader for Neuralynx {
     fn name(&self) -> &'static str {
         "neuralynx"
+    }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
     }
 
     fn description(&self) -> &'static str {

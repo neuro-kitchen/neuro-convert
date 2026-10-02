@@ -82,7 +82,7 @@ Imec sync bits as events (used for alignment only); OneBox with probes attached 
 ## Verification
 - `crates/readers/spikeglx/tests/real_run.rs`: IBL `data/raw/spikeglx/imec_385_100s` (3A, 384 AP + sync,
   100 s) through `nc_core::testkit::check_reader`, plus pinned values.
-- `tools/python/compare_spikeglx.py`: values against SpikeGLX's own conversion rule
+- `tools/python/compare spikeglx`: values against SpikeGLX's own conversion rule
   (`imChan0apGain` when present) and electrode positions against probeinterface (0.4.0:
   identical geometry, x offset 11 µm NP1 / 27 µm NP2). OK on IBL 3A, Noise4Sam (NP1 PRB_1_4),
   NP2010 (type 24), NP2013.

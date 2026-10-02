@@ -1,7 +1,8 @@
 [package]
 name = "nc-intan"
 description = "neuro-convert reader for Intan RHD / RHS recordings (RHX: one file, one file per signal type, one file per channel)"
-version.workspace = true
+# This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 

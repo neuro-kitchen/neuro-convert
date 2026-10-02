@@ -6,6 +6,15 @@
 //! [`EventSeries`](nc_core::EventSeries), snips →
 //! [`SnippetSeries`](nc_core::SnippetSeries), CSV exports → tables.
 
+/// This crate's version (`nc-tdt`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod block;
 pub mod codes;
 pub mod epocs;
@@ -39,6 +48,14 @@ pub struct Tdt;
 impl Reader for Tdt {
     fn name(&self) -> &'static str {
         "tdt"
+    }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
     }
 
     fn description(&self) -> &'static str {
@@ -265,7 +282,7 @@ mod tests {
     use tsq::tests::record;
 
     /// `<workspace>/target/<name>`: fixtures kept after the test so TDT's Python reader can
-    /// cross-check them (`tools/python/compare_tdt.py`).
+    /// cross-check them (`python tools/python/compare tdt`).
     fn fixture_dir(name: &str) -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../target").join(name)
     }
