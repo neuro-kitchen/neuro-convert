@@ -1,7 +1,8 @@
 //! A conversion as steps that both the CLI and the app drive:
 //! [`Job::open`] → (inspect the session) → [`Job::plan`] (re-run as the metadata changes) →
 //! [`Job::write`] (progress events, cancellable) → a [`Report`] that includes a verification of
-//! the written store.
+//! the written store: its structure, and its content compared with the source
+//! ([`nc_nwb::integrity`]), plus the checksums the source format records ([`crate::sources`]).
 //!
 //! A `Job` is `Send`, so a GUI can open and plan on one thread and write on a background one.
 
@@ -10,9 +11,10 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
 use nc_core::{Detection, Error, Issue, Level, MetadataFile, OpenOptions, Provenance, Result, Session};
-use nc_nwb::{NwbOptions, NwbPlan, Progress, WriteSummary};
+use nc_nwb::{Digests, NwbOptions, NwbPlan, Progress, VerifyLevel, WriteSummary};
 use serde::Serialize;
 
+use crate::sources::{self, SourceCheck};
 use crate::Registry;
 
 /// Shared stop flag: clone it into another thread (e.g. a Ctrl-C handler or a button) and call
@@ -38,6 +40,8 @@ impl CancelToken {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Stage {
+    /// Hashing source files against the checksums their format records (full verification).
+    CheckingSource,
     Writing,
     Verifying,
     Done,
@@ -47,7 +51,8 @@ pub enum Stage {
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
     Stage(Stage),
-    /// Continuous samples copied so far.
+    /// Progress of the current stage: bytes hashed (`CheckingSource`), samples copied
+    /// (`Writing`) or values compared (`Verifying`).
     Progress(Progress),
 }
 
@@ -59,8 +64,14 @@ pub struct Report {
     pub summary: WriteSummary,
     pub plan: NwbPlan,
     pub provenance: Provenance,
-    /// Structural checks of the written store (`nc_nwb::validate`).
+    /// Structural checks of the written store (`nc_nwb::validate`) and content mismatches.
     pub verification: Vec<Issue>,
+    /// Source files checked against their recorded checksums (empty when none or not full).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_checks: Vec<SourceCheck>,
+    /// Content digests of the written arrays (`None` when verification was off); lets
+    /// `neuro-convert verify` re-check a copy of the store later.
+    pub digests: Option<Digests>,
 }
 
 impl Report {
@@ -126,25 +137,47 @@ impl Job {
         self.plan.as_ref()
     }
 
-    /// Writes the planned NWB store to `dest`, then verifies it. `events` is called from worker
-    /// threads. On cancellation the partly written store is removed and [`Error::Cancelled`]
-    /// returned; on other errors it is left for inspection.
+    /// Checks the source's recorded checksums (at [`VerifyLevel::Full`]), writes the planned NWB
+    /// store to `dest`, then verifies it at `options.verify`. `events` is called from worker
+    /// threads. A source checksum mismatch stops before writing. On cancellation the store is
+    /// removed and [`Error::Cancelled`] returned; on other errors it is left for inspection.
     pub fn write(&self, dest: &Path, options: &NwbOptions, cancel: &CancelToken, events: &(dyn Fn(Event) + Sync)) -> Result<Report> {
         let plan = self.plan.as_ref().ok_or_else(|| Error::Unsupported("plan the conversion before writing".into()))?;
         let options = NwbOptions { cancel: Some(cancel.0.clone()), ..options.clone() };
-        events(Event::Stage(Stage::Writing));
-        let summary = match nc_nwb::write(&self.session, plan, dest, &options, &|p| events(Event::Progress(p))) {
-            Ok(s) => s,
-            Err(Error::Cancelled) => {
-                if dest.exists() {
-                    std::fs::remove_dir_all(dest).map_err(|e| Error::io(dest, e))?;
-                }
-                return Err(Error::Cancelled);
+        let progress = |p| events(Event::Progress(p));
+
+        let mut source_checks = Vec::new();
+        if options.verify == VerifyLevel::Full && options.source_checksums && sources::checked_bytes(&self.session.provenance) > 0 {
+            events(Event::Stage(Stage::CheckingSource));
+            source_checks = sources::check(&self.session.provenance, &cancel.0, &progress)?;
+            let bad: Vec<String> = source_checks.iter().filter(|c| !c.ok()).map(|c| c.path.display().to_string()).collect();
+            if !bad.is_empty() {
+                return Err(Error::format("source", format!("checksum mismatch: {} differ from the checksum their format recorded (corrupted, truncated or edited after recording); convert anyway with source checksums off (CLI --skip-source-check)", bad.join(", "))));
             }
+        }
+
+        events(Event::Stage(Stage::Writing));
+        let cancelled = |dest: &Path| -> Result<Report> {
+            if dest.exists() {
+                std::fs::remove_dir_all(dest).map_err(|e| Error::io(dest, e))?;
+            }
+            Err(Error::Cancelled)
+        };
+        let summary = match nc_nwb::write(&self.session, plan, dest, &options, &progress) {
+            Ok(s) => s,
+            Err(Error::Cancelled) => return cancelled(dest),
             Err(e) => return Err(e),
         };
         events(Event::Stage(Stage::Verifying));
-        let verification = nc_nwb::validate::validate(dest)?;
+        let mut verification = nc_nwb::validate::validate(dest)?;
+        let digests = match nc_nwb::integrity::verify(&self.session, plan, dest, options.verify, options.threads, options.cancel.as_deref(), &progress) {
+            Ok((digests, issues)) => {
+                verification.extend(issues);
+                (options.verify != VerifyLevel::Off).then_some(digests)
+            }
+            Err(Error::Cancelled) => return cancelled(dest),
+            Err(e) => return Err(e),
+        };
         events(Event::Stage(Stage::Done));
         Ok(Report {
             source: self.source.clone(),
@@ -153,6 +186,8 @@ impl Job {
             plan: plan.clone(),
             provenance: self.session.provenance.clone(),
             verification,
+            source_checks,
+            digests,
         })
     }
 }
@@ -226,6 +261,8 @@ mod tests {
         assert_eq!(*stages.lock().unwrap(), vec![Stage::Writing, Stage::Verifying, Stage::Done]);
         assert!(!report.has_errors(), "{:?}", report.verification);
         assert_eq!(report.summary.samples, 200_000);
+        let digests = report.digests.as_ref().expect("full verification by default");
+        assert_eq!((digests.arrays.len(), digests.mismatched()), (1, 0), "{digests:?}");
         report.save(&report.default_path()).unwrap();
         assert!(dest.with_extension("report.json").exists());
     }
@@ -250,5 +287,44 @@ mod tests {
         assert!(started.load(Ordering::Relaxed), "the store existed when cancelled");
         assert!(matches!(result, Err(Error::Cancelled)), "{:?}", result.err());
         assert!(!dest.exists(), "partial store removed");
+    }
+
+    /// A source file whose recorded checksum does not match stops the conversion before writing,
+    /// unless source checksums are switched off.
+    #[test]
+    fn test_source_checksum_mismatch_stops_before_writing() {
+        struct Damaged;
+        impl Reader for Damaged {
+            fn name(&self) -> &'static str {
+                "damaged"
+            }
+            fn description(&self) -> &'static str {
+                "test"
+            }
+            fn versions(&self) -> &'static [&'static str] {
+                &[]
+            }
+            fn detect(&self, path: &Path) -> Option<Detection> {
+                (path.extension()? == "damaged").then_some(Detection { format: "damaged", version: None, confidence: 1.0 })
+            }
+            fn open(&self, path: &Path, o: &OpenOptions) -> Result<Session> {
+                let mut s = Fake.open(path, o)?;
+                let bin = out("damaged.bin");
+                std::fs::write(&bin, b"abc").unwrap();
+                s.provenance.add_file(&bin);
+                s.provenance.set_checksum(&bin, "sha1", "0000000000000000000000000000000000000000");
+                Ok(s)
+            }
+        }
+        let registry = Registry::empty().with(Damaged);
+        let mut job = Job::open(&registry, Path::new("x.damaged"), &OpenOptions::default()).unwrap();
+        job.plan(&MetadataFile::parse(META).unwrap());
+        let dest = out("damaged.nwb.zarr");
+        let options = NwbOptions { gzip: None, threads: 1, ..Default::default() };
+        let err = job.write(&dest, &options, &CancelToken::new(), &|_| {}).unwrap_err();
+        assert!(err.to_string().contains("checksum mismatch"), "{err}");
+        assert!(!dest.exists(), "nothing written");
+        let report = job.write(&dest, &NwbOptions { source_checksums: false, ..options }, &CancelToken::new(), &|_| {}).unwrap();
+        assert!(report.source_checks.is_empty() && !report.has_errors());
     }
 }

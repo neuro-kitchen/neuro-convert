@@ -10,11 +10,17 @@
 pub mod job;
 pub mod preview;
 pub mod registry;
+#[cfg(feature = "nwb")]
+pub mod sources;
 
 pub use nc_base as base;
 pub use nc_core as core;
 #[cfg(feature = "nwb")]
 pub use nc_nwb as nwb;
+#[cfg(feature = "intan")]
+pub use nc_intan as intan;
+#[cfg(feature = "openephys")]
+pub use nc_openephys as openephys;
 #[cfg(feature = "spikeglx")]
 pub use nc_spikeglx as spikeglx;
 #[cfg(feature = "tdt")]

@@ -34,6 +34,14 @@ impl Registry {
         {
             r = r.with(nc_spikeglx::SpikeGlx);
         }
+        #[cfg(feature = "intan")]
+        {
+            r = r.with(nc_intan::Intan);
+        }
+        #[cfg(feature = "openephys")]
+        {
+            r = r.with(nc_openephys::OpenEphys);
+        }
         r
     }
 
