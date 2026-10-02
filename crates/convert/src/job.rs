@@ -15,6 +15,7 @@ use nc_nwb::{Digests, NwbOptions, NwbPlan, Progress, VerifyLevel, WriteSummary};
 use serde::Serialize;
 
 use crate::sources::{self, SourceCheck};
+use crate::versions::CrateVersion;
 use crate::Registry;
 
 /// Shared stop flag: clone it into another thread (e.g. a Ctrl-C handler or a button) and call
@@ -72,6 +73,9 @@ pub struct Report {
     /// Content digests of the written arrays (`None` when verification was off); lets
     /// `neuro-convert verify` re-check a copy of the store later.
     pub digests: Option<Digests>,
+    /// The program and every crate that produced the output, with versions.
+    #[serde(default)]
+    pub versions: Vec<CrateVersion>,
 }
 
 impl Report {
@@ -98,14 +102,35 @@ pub struct Job {
     plan: Option<NwbPlan>,
     /// Generated once, so re-planning keeps the same NWB identifier.
     identifier: String,
+    /// The front end running the job (`neuro-convert` CLI, `neuro-convert-app`), for the record.
+    program: Option<CrateVersion>,
 }
 
 impl Job {
+    /// Records the front end running the job: first in the report's versions and the name in
+    /// the file's `source_script`.
+    pub fn set_program(&mut self, name: &str, version: &str) {
+        self.program = Some(CrateVersion::new(name, version));
+    }
+
+    /// The program and crate versions recorded with this job's output.
+    pub fn versions(&self) -> Vec<CrateVersion> {
+        self.program.iter().cloned().chain(crate::versions()).collect()
+    }
+
+    /// `/general/source_script`: (`<program> (reader …, nc-convert …, nc-nwb …)`, program name).
+    fn source_script(&self) -> (String, String) {
+        let program = self.program.clone().unwrap_or_else(|| CrateVersion::new("nc-convert", crate::VERSION));
+        let mut parts = vec![format!("reader {}", self.session.provenance.reader), format!("nc-convert {}", crate::VERSION)];
+        #[cfg(feature = "nwb")]
+        parts.push(format!("nc-nwb {}", nc_nwb::VERSION));
+        (format!("{program} ({})", parts.join(", ")), program.name)
+    }
     /// Detects the format of `path` and reads it.
     pub fn open(registry: &Registry, path: &Path, options: &OpenOptions) -> Result<Self> {
         let detection = registry.detect(path).into_iter().next().ok_or_else(|| Error::UnknownFormat(path.to_path_buf()))?;
         let session = registry.open(path, options)?;
-        Ok(Self { source: path.to_path_buf(), detection, session, plan: None, identifier: nc_nwb::new_identifier() })
+        Ok(Self { source: path.to_path_buf(), detection, session, plan: None, identifier: nc_nwb::new_identifier(), program: None })
     }
 
     pub fn source(&self) -> &Path {
@@ -142,7 +167,9 @@ impl Job {
     /// threads. A source checksum mismatch stops before writing. On cancellation the store is
     /// removed and [`Error::Cancelled`] returned; on other errors it is left for inspection.
     pub fn write(&self, dest: &Path, options: &NwbOptions, cancel: &CancelToken, events: &(dyn Fn(Event) + Sync)) -> Result<Report> {
-        let plan = self.plan.as_ref().ok_or_else(|| Error::Unsupported("plan the conversion before writing".into()))?;
+        let mut plan = self.plan.clone().ok_or_else(|| Error::Unsupported("plan the conversion before writing".into()))?;
+        plan.file.source_script = Some(self.source_script());
+        let plan = &plan;
         let options = NwbOptions { cancel: Some(cancel.0.clone()), ..options.clone() };
         let progress = |p| events(Event::Progress(p));
 
@@ -158,8 +185,11 @@ impl Job {
 
         events(Event::Stage(Stage::Writing));
         let cancelled = |dest: &Path| -> Result<Report> {
-            if dest.exists() {
+            // A Zarr store is a folder, an HDF5 file a file
+            if dest.is_dir() {
                 std::fs::remove_dir_all(dest).map_err(|e| Error::io(dest, e))?;
+            } else if dest.exists() {
+                std::fs::remove_file(dest).map_err(|e| Error::io(dest, e))?;
             }
             Err(Error::Cancelled)
         };
@@ -188,6 +218,7 @@ impl Job {
             verification,
             source_checks,
             digests,
+            versions: self.versions(),
         })
     }
 }
@@ -206,6 +237,9 @@ mod tests {
     impl Reader for Fake {
         fn name(&self) -> &'static str {
             "fake"
+        }
+        fn version(&self) -> &'static str {
+            "0.0.0"
         }
         fn description(&self) -> &'static str {
             "test"
@@ -249,6 +283,7 @@ mod tests {
         assert_eq!(plan.file.identifier, first.file.identifier);
 
         let stages = Mutex::new(Vec::new());
+        job.set_program("test-program", "9.9.9");
         let dest = out("ok.nwb.zarr");
         let options = NwbOptions { gzip: None, threads: 2, ..Default::default() };
         let report = job
@@ -265,6 +300,14 @@ mod tests {
         assert_eq!((digests.arrays.len(), digests.mismatched()), (1, 0), "{digests:?}");
         report.save(&report.default_path()).unwrap();
         assert!(dest.with_extension("report.json").exists());
+
+        // What wrote it: the program first, then every crate, in the report and the file
+        assert_eq!(report.versions[0], CrateVersion::new("test-program", "9.9.9"));
+        assert!(report.versions.iter().any(|v| v.name == "nc-convert" && v.version == crate::VERSION));
+        let script: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("general/source_script/zarr.json")).unwrap()).unwrap();
+        assert_eq!(script["attributes"]["file_name"], "test-program");
+        let (value, _) = job.source_script();
+        assert!(value.starts_with("test-program 9.9.9 (reader fake 0.0.0, nc-convert ") && value.contains("nc-nwb "), "{value}");
     }
 
     #[test]
@@ -297,6 +340,9 @@ mod tests {
         impl Reader for Damaged {
             fn name(&self) -> &'static str {
                 "damaged"
+            }
+            fn version(&self) -> &'static str {
+                "0.0.0"
             }
             fn description(&self) -> &'static str {
                 "test"

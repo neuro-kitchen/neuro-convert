@@ -84,7 +84,9 @@ impl Registry {
     pub fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
         let best = self.detect(path).into_iter().next().ok_or_else(|| Error::UnknownFormat(path.to_path_buf()))?;
         let reader = self.get(best.format).expect("detected by a registered reader");
-        reader.open(path, options)
+        let mut session = reader.open(path, options)?;
+        session.provenance.reader = format!("{} {}", reader.name(), reader.version());
+        Ok(session)
     }
 }
 
@@ -108,6 +110,9 @@ mod tests {
         fn name(&self) -> &'static str {
             "fake"
         }
+        fn version(&self) -> &'static str {
+            "0.0.0"
+        }
         fn description(&self) -> &'static str {
             "test reader"
         }
@@ -126,7 +131,8 @@ mod tests {
     fn test_custom_reader_plugs_in() {
         let r = Registry::empty().with(Fake);
         assert_eq!(r.detect(Path::new("x.fake"))[0].format, "fake");
-        assert!(r.open(Path::new("x.fake"), &OpenOptions::default()).is_ok());
+        let s = r.open(Path::new("x.fake"), &OpenOptions::default()).unwrap();
+        assert_eq!(s.provenance.reader, "fake 0.0.0", "the reader and its version are recorded");
         assert!(matches!(r.open(Path::new("x.other"), &OpenOptions::default()), Err(Error::UnknownFormat(_))));
     }
 }
