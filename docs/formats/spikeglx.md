@@ -1,4 +1,4 @@
-# SpikeGLX (Neuropixels imec probes, NI-DAQ)
+# SpikeGLX (Neuropixels imec probes, NI-DAQ, OneBox)
 
 Reader: `crates/readers/spikeglx` (`nc-spikeglx`). References: SpikeGLX metadata help,
 `readSGLX.py` (SpikeGLX_Datafile_Tools), SGLXMetaToCoords, the IMRO table reference
@@ -9,11 +9,13 @@ Reader: `crates/readers/spikeglx` (`nc-spikeglx`). References: SpikeGLX metadata
 |---|---|---|
 | `<run>_g<gate>_t<trig>.imec<N>.ap.bin` / `.lf.bin` | probe data: int16, all saved channels interleaved per sample | `bin.rs` |
 | `….nidq.bin` | NI-DAQ data (MN, MA, XA analog, DW digital words) | `bin.rs` |
+| `….obx<N>.obx.bin` | OneBox data (XA analog, XD digital word, SY sync) | `bin.rs` |
 | `.meta` (one per `.bin`) | `key=value`; `~` tables: `imroTbl`, `snsChanMap`, `snsShankMap`, `snsGeomMap` | `meta.rs` |
 
-- A path to a `.bin` / `.meta` opens every file of its run in that folder (e.g. AP + LF). A folder
-  opens the run found in it and two levels below (run folder `<run>_g0/`, probe folders
-  `<run>_g0_imec0/`); several runs need `--block <run>`.
+- A run is one gate (`<run>_g<gate>`): all its triggers (`_t0`, `_t1`, …; CatGT's `_tcat`)
+  and streams open together. A path to a `.bin` / `.meta` opens its gate (from a probe folder,
+  its siblings too). A folder opens the gate found in it and two levels below (run folder
+  `<run>_g0/`, probe folders `<run>_g0_imec0/`); several gates need `--block <run>_g<gate>`.
 - 3A writes `.imec.` (read as `imec0`). Renamed files (IBL: `imec_385_100s.ap.bin`) keep only
   the band; the stream type then comes from `typeThis`.
 
@@ -25,6 +27,11 @@ Reader: `crates/readers/spikeglx` (`nc-spikeglx`). References: SpikeGLX metadata
 | imec sync (SY) | `<probe>.<band>.sync` | raw 16-bit word |
 | nidq MN + MA + XA | `nidq` | volts |
 | nidq DW | `nidq.digital` | raw 16-bit words |
+| OneBox XA | `obx<N>` | volts (`obAiRangeMax / obMaxInt`) |
+| OneBox XD / SY | `obx<N>.digital` / `obx<N>.sync` | raw 16-bit words |
+
+With several triggers every name gets the trigger: `imec0.ap.t0`, `imec0.ap.t1`, … (one series
+per trigger window; electrodes are shared).
 
 Saved channel order follows `snsSaveChanSubset` (`all`, indices and `a:b` ranges); the counts
 `snsApLfSy` / `snsMnMaXaDw` split the columns into types. Samples stay int16; each channel's gain
@@ -49,20 +56,40 @@ x is measured from the shank edge, as SpikeGLX does; probeinterface measures fro
 site, so its x values are 11 µm smaller for NP1.0 (same geometry). Reference sites
 (`used = 0`) are kept as electrodes.
 
+## Time
+- Every recording starts at `firstSample / rate` (time since acquisition start, on its own
+  clock) minus the run's earliest; trigger windows keep their gaps.
+- **Sync alignment.** The sync pulse (a square wave, `syncSourcePeriod` s): imec and OneBox bit 6
+  of `SY`; NI a digital line (`syncNiChanType=0`, line `syncNiChan`) or an analog channel above
+  `syncNiThresh` V (`syncNiChanType=1`). Rising edges are found by sampling every 10 ms and
+  bisecting each change (a few thousand reads even for an hour of AP data). Per trigger, each
+  stream with ≥ 2 edges is fitted (least squares, edges matched within a quarter period) to the
+  reference: the first probe, else NI, else OneBox. The fit sets the stream's start time and
+  sample rate (`rate / scale`); a note gives offset, drift (ppm) and largest residual. Streams
+  without a pulse keep their own clock (warning).
+- **TTL events.** Every NI DW / OneBox XD line that changes becomes `<stream> TTL <line>` (line =
+  word × 16 + bit; NI's sync line too), high periods as interval events, on the reference clock,
+  joined across triggers. Full scan of the digital column (NI / OneBox files are small).
+
 ## Session
 - `start_time`: earliest `fileCreateTime` (local time, no zone: set `session.timezone`).
-- `experiment`: the run name; `userNotes` → notes; `firstSample` and `appVersion` → extras.
-- Every stream starts at 0 s. Streams are not aligned with the sync channel yet (a warning says
-  so when a run has several streams).
+- `experiment`: the run name; `userNotes` → notes (once per stream); alignment notes;
+  `firstSample` (per stream, band and trigger), `appVersion`, triggers → extras.
 
 ## Not yet
-OneBox (`obx`) streams; TTL events from sync / digital lines; sync-based alignment; multi-trigger
-runs (`_t0`, `_t1`, … are separate runs today); `catgt`-processed files.
+Imec sync bits as events (used for alignment only); OneBox with probes attached (no test data).
 
 ## Verification
 - `crates/readers/spikeglx/tests/real_run.rs`: IBL `data/raw/spikeglx/imec_385_100s` (3A, 384 AP + sync,
   100 s) through `nc_core::testkit::check_reader`, plus pinned values.
-- `tools/python/compare_spikeglx.py`: values against SpikeGLX's own conversion rule and electrode
-  positions against probeinterface (0.4.0: identical geometry, x offset 11 µm).
+- `tools/python/compare_spikeglx.py`: values against SpikeGLX's own conversion rule
+  (`imChan0apGain` when present) and electrode positions against probeinterface (0.4.0:
+  identical geometry, x offset 11 µm NP1 / 27 µm NP2). OK on IBL 3A, Noise4Sam (NP1 PRB_1_4),
+  NP2010 (type 24), NP2013.
+- neo's GIN test data (`tools/python/fetch_gin.py spikeglx/<set>`): DigitalChannelTest — all 163
+  TTL high periods identical to neo's ON / OFF events (through NWB); multi_trigger_multi_gate —
+  trigger and stream offsets identical to neo's segment `t_start` differences; OneBox
+  run_with_only_adc read and verified. Unit tests: synthetic sync alignment (50 ppm, 3 ms
+  recovered within 0.2 ms), TTL scan, triggers.
 - Converted to NWB and read back with pynwb 4.2.0 / hdmf-zarr 0.14.0: int16 data identical to the
   `.bin`, volts identical to SpikeGLX's conversion, 384 electrodes with positions.
