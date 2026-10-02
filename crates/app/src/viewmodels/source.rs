@@ -16,6 +16,8 @@ pub struct FormatCard {
     pub name: String,
     pub description: String,
     pub opens: String,
+    /// `verified` / `experimental` / `community`, and what it means.
+    pub maturity: (String, String),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -69,7 +71,7 @@ impl SourceVm {
     fn refresh(&mut self, cx: &App) {
         let ws = &self.store.read(cx).ws;
         let registry = ws.registry();
-        self.formats = registry.readers().map(|r| FormatCard { name: r.name().to_string(), description: r.description().to_string(), opens: r.opens().to_string() }).collect();
+        self.formats = registry.readers().map(|r| FormatCard { name: r.name().to_string(), description: r.description().to_string(), opens: r.opens().to_string(), maturity: (r.maturity().label().to_string(), r.maturity().explain().to_string()) }).collect();
         let home = home();
         self.recent = ws
             .settings

@@ -13,9 +13,12 @@ The toolbar has only Open recording, Load / Save metadata and the theme switch.
 
 ### ① Source
 **Open recording…** (Ctrl+O) picks the recording's folder; Ctrl+Shift+O picks a single file. You
-can also drop a folder or file on the window, or start the app with a path. The page lists what
-each format expects (from the readers), recent recordings, and, for a TDT tank or a folder with
-several SpikeGLX runs, the recordings to choose from.
+can also drop a folder or file on the window, or start the app with a path. The page shows recent
+recordings, the recordings to choose from when a folder holds several (TDT tank blocks, SpikeGLX
+gates, Open Ephys recordings, Blackrock segments, Neuralynx sessions), and **What can be opened**:
+one tag per format (hover for what it is); **What each format expects** unfolds each format's
+description, what to select, and its maturity (*verified*: checked against a reference reader on
+real recordings).
 
 ### ② Contents
 Three regions. The middle one's heading says what is selected, its facts and where it goes (e.g.

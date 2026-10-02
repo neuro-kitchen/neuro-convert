@@ -387,6 +387,9 @@ pub(crate) mod tests {
         fn name(&self) -> &'static str {
             "fake"
         }
+        fn version(&self) -> &'static str {
+            "0.0.0"
+        }
         fn description(&self) -> &'static str {
             "test reader"
         }
