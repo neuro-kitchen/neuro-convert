@@ -40,4 +40,8 @@ fn reads_ibl_neuropixels_3a() {
     assert_eq!(s.electrodes[383].position_um, Some([43.0, 3820.0, 0.0]));
     assert_eq!(s.metadata.start_time.as_deref(), Some("2019-05-07T17:24:02"));
     assert_eq!(s.metadata.devices[0].model.as_deref(), Some("3A (option 3)"));
+    // The .meta's fileSHA1 is recorded for the .bin (this file's content no longer matches it:
+    // sha1sum gives 90cf1769…, see .knowledge/status.md)
+    let bin = s.provenance.files.iter().find(|f| f.path.extension().is_some_and(|e| e == "bin")).unwrap();
+    assert_eq!(bin.checksum.as_ref().map(|c| (c.algorithm.as_str(), c.value.as_str())), Some(("sha1", "d4ce63afa12937a1904d344b93c90b64573782d3")));
 }

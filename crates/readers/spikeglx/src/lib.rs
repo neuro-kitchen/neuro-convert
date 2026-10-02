@@ -318,6 +318,12 @@ impl Builder {
         for f in &self.files {
             prov.add_file(f);
         }
+        // SpikeGLX records the SHA-1 of every finished .bin
+        for (f, meta, _) in loaded {
+            if let Some(sha1) = meta.get("fileSHA1").filter(|v| !v.is_empty()) {
+                prov.set_checksum(&f.bin(), "sha1", sha1);
+            }
+        }
         prov.warnings = self.warnings;
         s.provenance = prov;
         Ok(self.session)

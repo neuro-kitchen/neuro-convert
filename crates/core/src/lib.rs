@@ -40,7 +40,7 @@ pub use metadata::{Device, SessionMetadata, Subject};
 pub use metadata_file::{ElectrodeGroupSpec, ImpedanceSpec, ItemKind, ItemSpec, MetadataFile, SnippetSpec, StreamSpec, StreamType};
 pub use nc_base::{Error, MemoryOrder, Result, SampleType};
 pub use options::OpenOptions;
-pub use provenance::{Provenance, SourceFile};
+pub use provenance::{Checksum, Provenance, SourceFile};
 pub use reader::{Detection, Reader};
 pub use recording::{check_read, Calibration, ChannelInfo, Recording, RecordingInfo, SignalKind};
 pub use session::Session;
