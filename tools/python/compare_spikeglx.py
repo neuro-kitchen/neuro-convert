@@ -42,7 +42,13 @@ def main(bin_path: Path, at: float) -> int:
     n_saved = int(meta["nSavedChans"])
     raw = np.memmap(bin_path, dtype="<i2", mode="r").reshape(-1, n_saved)
     max_int = int(meta.get("imMaxInt", 512))
-    ap_gain = float(meta["imroTbl"].split(")(")[1].split()[3])
+    # readSGLX.py: `imChan0apGain` when the metadata has it (SpikeGLX ≥ 2023); else NP2.0
+    # family fixed 80; NP1 / 3A: the IMRO entry's AP gain
+    np2 = int(meta.get("imDatPrb_type", 0)) in (21, 24, 2003, 2004, 2005, 2006, 2013, 2014, 2020, 2021)
+    if "imChan0apGain" in meta:
+        ap_gain = float(meta["imChan0apGain"])
+    else:
+        ap_gain = 80.0 if np2 else float(meta["imroTbl"].split(")(")[1].split()[3])
     volts = float(meta["imAiRangeMax"]) / max_int / ap_gain
     first = ap["first_sample"]
     ref = raw[first : first + len(ap["values"]), 0] * volts
