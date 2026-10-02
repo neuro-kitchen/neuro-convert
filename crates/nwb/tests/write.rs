@@ -5,7 +5,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use nc_core::{Device, EventSeries, MemoryRecording, MetadataFile, Session, SnippetSeries, Table};
+use nc_core::{Device, EventSeries, MemoryRecording, MemoryWaveforms, MetadataFile, Session, SnippetSeries, Table};
 use nc_nwb::{self as nwb, NwbOptions};
 
 /// `<workspace>/target/nwb-test`: stores are kept for the Python read-back.
@@ -45,7 +45,7 @@ fn session() -> Session {
         timestamps: vec![0.1, 0.2, 0.3, 0.4],
         channels: vec![1, 2, 1, 3],
         sort_codes: vec![0, 1, 1, 2],
-        data: (0..16).map(|v| v as f32).collect(),
+        waveforms: Arc::new(MemoryWaveforms::new(4, (0..16).map(|v| v as f32).collect())),
         unit: "V".into(),
         ..Default::default()
     });
@@ -343,4 +343,27 @@ fn integrity_detects_swapped_and_damaged_chunks() {
     let (_, issues) = verify(&s, &plan, &dest, VerifyLevel::Full, 1, None, &|_| {}).unwrap();
     assert_eq!(issues.len(), 1, "{issues:?}");
     assert!(issues[0].message.starts_with("/acquisition/eNe1_ch1/data"));
+}
+
+/// The same session as NWB/HDF5 (`.nwb`): written, verified against the source, structurally
+/// valid. `tools/python/validate_nwb.py target/nwb-test/small.nwb --small` reads it with pynwb.
+#[cfg(feature = "hdf5")]
+#[test]
+fn writes_small_nwb_hdf5() {
+    let mut s = session();
+    let meta = MetadataFile::parse(META).unwrap();
+    let plan = nwb::plan(&mut s, &meta, || "test-id".into());
+    assert!(!plan.has_errors(), "{:?}", plan.issues);
+    let dest = out_dir().join("small.nwb");
+    for gzip in [Some(1), None] {
+        let options = NwbOptions { overwrite: true, threads: 3, chunks: nwb::ChunkPolicy::Seconds(0.25), gzip, ..Default::default() };
+        let summary = nwb::write(&s, &plan, &dest, &options, &|_| {}).unwrap();
+        assert!(dest.is_file());
+        assert_eq!(summary.samples, 3000 + 1000);
+        let (digests, issues) = nwb::integrity::verify(&s, &plan, &dest, nwb::VerifyLevel::Full, 3, None, &|_| {}).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+        assert!(!digests.arrays.is_empty());
+        let issues = nwb::validate::validate(&dest).unwrap();
+        assert!(issues.is_empty(), "{issues:?}");
+    }
 }

@@ -25,7 +25,7 @@ use zarrs::storage::ReadableStorageTraits;
 use crate::mapping::NwbPlan;
 use crate::types::series::{regular_rate, Storage};
 use crate::Progress;
-use nc_core::{Error, Issue, Recording, Result, SampleType, Session};
+use nc_core::{Error, Issue, Recording, Result, SampleType, Session, SnippetSeries};
 
 /// Hash algorithm of the digests (recorded in reports).
 pub const ALGORITHM: &str = "xxh3-64";
@@ -141,6 +141,8 @@ enum Source<'a> {
     Recording { rec: &'a dyn Recording, native: bool },
     /// Little-endian bytes of the whole array, row-major.
     Bytes(Vec<u8>),
+    /// Float32 waveforms of these snippets, one per row (read from the source per block).
+    Snippets { sn: &'a SnippetSeries, events: Vec<usize> },
 }
 
 struct Target<'a> {
@@ -170,6 +172,7 @@ impl Target<'_> {
                 let w = self.row_values as usize * es;
                 Ok(b[r0 as usize * w..r1 as usize * w].to_vec())
             }
+            Source::Snippets { sn, events } => Ok(f32_bytes(&sn.read(&events[r0 as usize..r1 as usize])?)),
             Source::Recording { rec, native } => {
                 let c = self.row_values as usize;
                 let n = (r1 - r0) as usize;
@@ -261,12 +264,11 @@ fn targets<'a>(session: &'a Session, plan: &NwbPlan) -> Vec<Target<'a>> {
         let sn = &session.snippets[p.snippet];
         let w = sn.samples_per_snippet;
         for &(channel, _) in &p.rows {
-            let events: Vec<usize> = (0..sn.len()).filter(|&i| sn.channels[i] == channel).collect();
+            let events = sn.on_channel(channel);
             let base = format!("/acquisition/{}_ch{channel}", p.name);
-            let data: Vec<f32> = events.iter().flat_map(|&i| sn.data[i * w..(i + 1) * w].iter().copied()).collect();
             let times: Vec<f64> = events.iter().map(|&i| sn.timestamps[i]).collect();
             let k = events.len() as u64;
-            out.push(Target { path: format!("{base}/data"), ty: SampleType::F32, shape: vec![k, 1, w as u64], row_values: w as u64, rate: None, source: Source::Bytes(f32_bytes(&data)) });
+            out.push(Target { path: format!("{base}/data"), ty: SampleType::F32, shape: vec![k, 1, w as u64], row_values: w as u64, rate: None, source: Source::Snippets { sn, events } });
             out.push(Target { path: format!("{base}/timestamps"), ty: SampleType::F64, shape: vec![k], row_values: 1, rate: None, source: Source::Bytes(f64_bytes(&times)) });
         }
     }
@@ -274,30 +276,73 @@ fn targets<'a>(session: &'a Session, plan: &NwbPlan) -> Vec<Target<'a>> {
     out
 }
 
-/// Reads arrays back from a store.
-struct StoreReader {
-    store: Arc<dyn ReadableStorageTraits>,
+/// An array opened for reading back.
+enum StoredArray {
+    Zarr(Box<Array<dyn ReadableStorageTraits>>),
+    #[cfg(feature = "hdf5")]
+    Hdf5 { shape: Vec<u64> },
+}
+
+impl StoredArray {
+    fn shape(&self) -> &[u64] {
+        match self {
+            StoredArray::Zarr(a) => a.shape(),
+            #[cfg(feature = "hdf5")]
+            StoredArray::Hdf5 { shape } => shape,
+        }
+    }
+}
+
+/// Reads arrays back from a store (Zarr) or file (HDF5).
+enum StoreReader {
+    Zarr(Arc<dyn ReadableStorageTraits>),
+    #[cfg(feature = "hdf5")]
+    Hdf5(crate::backend::hdf5::Hdf5Reader),
 }
 
 impl StoreReader {
     fn open(path: &Path) -> Result<Self> {
+        #[cfg(feature = "hdf5")]
+        if crate::backend::Format::of(path) == crate::backend::Format::Hdf5 {
+            return Ok(Self::Hdf5(crate::backend::hdf5::Hdf5Reader::open(path)?));
+        }
         let store = FilesystemStore::new(path).map_err(|e| Error::format("nwb-zarr", e.to_string()))?;
-        Ok(Self { store: Arc::new(store) })
+        Ok(Self::Zarr(Arc::new(store)))
     }
 
-    fn array(&self, path: &str) -> Result<Array<dyn ReadableStorageTraits>> {
-        Array::open(self.store.clone(), path).map_err(|e| Error::format("nwb-zarr", format!("{path}: {e}")))
+    fn array(&self, path: &str) -> Result<StoredArray> {
+        match self {
+            Self::Zarr(store) => Array::open(store.clone(), path).map(|a| StoredArray::Zarr(Box::new(a))).map_err(|e| Error::format("nwb-zarr", format!("{path}: {e}"))),
+            #[cfg(feature = "hdf5")]
+            Self::Hdf5(r) => r.describe(path).map(|(_, shape)| StoredArray::Hdf5 { shape }),
+        }
     }
 
-    /// The array's `_DTYPE` and shape.
+    /// The array's dtype name (Zarr: `_DTYPE`) and shape.
     fn describe(&self, path: &str) -> Result<(String, Vec<u64>)> {
-        let a = self.array(path)?;
-        let dtype = a.attributes().get("_DTYPE").and_then(|v| v.as_str()).unwrap_or("?").to_string();
-        Ok((dtype, a.shape().to_vec()))
+        match self {
+            Self::Zarr(_) => match self.array(path)? {
+                StoredArray::Zarr(a) => {
+                    let dtype = a.attributes().get("_DTYPE").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                    Ok((dtype, a.shape().to_vec()))
+                }
+                #[cfg(feature = "hdf5")]
+                StoredArray::Hdf5 { .. } => unreachable!("a Zarr store opens Zarr arrays"),
+            },
+            #[cfg(feature = "hdf5")]
+            Self::Hdf5(r) => r.describe(path),
+        }
     }
 
     /// Little-endian bytes of rows `r0..r1` of `path`, read as `ty`.
-    fn rows(&self, array: &Array<dyn ReadableStorageTraits>, path: &str, ty: SampleType, r0: u64, r1: u64) -> Result<Vec<u8>> {
+    fn rows(&self, array: &StoredArray, path: &str, ty: SampleType, r0: u64, r1: u64) -> Result<Vec<u8>> {
+        let array = match (self, array) {
+            (Self::Zarr(_), StoredArray::Zarr(a)) => a,
+            #[cfg(feature = "hdf5")]
+            (Self::Hdf5(r), _) => return r.rows(path, ty, r0, r1),
+            #[cfg(feature = "hdf5")]
+            _ => unreachable!("arrays come from their own store"),
+        };
         let ranges: Vec<std::ops::Range<u64>> = std::iter::once(r0..r1).chain(array.shape()[1..].iter().map(|&d| 0..d)).collect();
         let subset = ArraySubset::new_with_ranges(&ranges);
         let err = |e: zarrs::array::ArrayError| Error::format("nwb-zarr", format!("{path}: {e}"));

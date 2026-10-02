@@ -115,6 +115,14 @@ impl Backend for ZarrBackend {
         a.store_array_subset(&a.subset_all(), values).map_err(|e| err(path, e))
     }
 
+    fn u64s(&self, path: &str, values: &[u64], dim: &str, attrs: Attrs) -> Result<()> {
+        let a = self.array(path, vec![values.len() as u64], whole(values.len()), data_type::uint64(), 0u64, "uint64", &[dim], attrs)?;
+        if values.is_empty() {
+            return Ok(());
+        }
+        a.store_array_subset(&a.subset_all(), values).map_err(|e| err(path, e))
+    }
+
     fn stream(&self, path: &str, shape: &[u64], chunk_rows: u64, ty: SampleType, dims: &[&str], attrs: Attrs) -> Result<Box<dyn RowSink>> {
         let mut chunks = shape.to_vec();
         chunks[0] = chunk_rows.clamp(1, shape[0].max(1));

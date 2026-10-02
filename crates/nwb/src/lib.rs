@@ -17,9 +17,9 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 pub use integrity::{Digests, VerifyLevel};
+pub use backend::{Format, HDF5};
 pub use mapping::{resolve, NwbPlan};
 
-use backend::zarr::ZarrBackend;
 use backend::Backend;
 use nc_core::{Error, Level, MetadataFile, Result, Session};
 
@@ -161,8 +161,8 @@ pub fn write(
         return Err(Error::Cancelled);
     }
     let started = Instant::now();
-    let b = ZarrBackend::create(dest, options.gzip, options.overwrite)?;
-    let b: &dyn Backend = &b;
+    let backend = backend::create(dest, options.gzip, options.overwrite)?;
+    let b: &dyn Backend = backend.as_ref();
 
     types::nwbfile::write_root(b, plan)?;
     types::subject::write(b, &plan.subject)?;
@@ -215,5 +215,6 @@ pub fn write(
 
     // Schema last, so a crash midway never leaves a store that looks complete
     types::nwbfile::write_specifications(b)?;
+    b.finish()?;
     Ok(WriteSummary { path: dest.display().to_string(), series: plan.series.len(), samples: total, seconds: started.elapsed().as_secs_f64() })
 }
