@@ -22,6 +22,15 @@
 //!
 //! Not yet: binary-format spikes, OneBox ADC streams, Open Ephys's own NWB format (already NWB).
 
+/// This crate's version (`nc-openephys`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod legacy;
 pub mod npy;
 pub mod settings;
@@ -77,9 +86,17 @@ impl Reader for OpenEphys {
     fn name(&self) -> &'static str {
         "openephys"
     }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
+    }
 
     fn description(&self) -> &'static str {
-        "Open Ephys GUI recording, binary format (structure.oebin + continuous.dat)"
+        "Open Ephys GUI recording: binary format (structure.oebin + continuous.dat) or legacy format (.continuous)"
     }
 
     fn opens(&self) -> &'static str {

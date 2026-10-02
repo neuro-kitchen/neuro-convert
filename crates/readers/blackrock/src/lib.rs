@@ -17,6 +17,15 @@
 //! Times are seconds from the earliest timestamp of the container; the start time is the NSx
 //! (else NEV) time origin, in UTC.
 
+/// This crate's version (`nc-blackrock`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod nev;
 pub mod nsx;
 
@@ -144,6 +153,14 @@ impl Opened {
 impl Reader for Blackrock {
     fn name(&self) -> &'static str {
         "blackrock"
+    }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
     }
 
     fn description(&self) -> &'static str {

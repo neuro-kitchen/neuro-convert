@@ -61,7 +61,7 @@ give the site positions (µm) and `probe_name` / serial the device.
   `extra`.
 
 ## Verification
-`tools/python/compare_openephys.py` converts each recording to NWB, reads it back with pynwb and
+`tools/python/compare openephys` converts each recording to NWB, reads it back with pynwb and
 compares every value of every series with neo's `OpenEphysBinaryRawIO` (streams matched by
 values; analog and sync channels differ only by neo's µV label), the start times (≥ 0.6 against
 the synchronized `timestamps.npy`, before against neo) and the number of TTL periods. Checked
@@ -90,7 +90,7 @@ Files (each with a 1024-byte text header `header.key = value;`):
   `OpenEphys_SampleData_3` `CH32`, which neo refuses to open).
 - Times: sample number / rate, relative to the start's first sample. Spikes need an electrode
   group in the metadata (`snippets: { '*': { electrode_group: … } }`) to be written.
-- Verified with `tools/python/compare_openephys_legacy.py` against neo's `OpenEphysRawIO`
+- Verified with `tools/python/compare openephys-legacy` against neo's `OpenEphysRawIO`
   through NWB, 2026-10-02: `OpenEphys_SampleData_1` (2 ch with gaps, 454 stereotrode spikes),
   `OpenEphys_SampleData_2_(multiple_starts)` (2 starts, 265 + 74 spikes), `OpenEphys_SampleData_3`
   (2 starts, 5 TTL lines; compared without CH32): every sample, TTL onset and spike waveform /

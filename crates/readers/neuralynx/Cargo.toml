@@ -1,7 +1,8 @@
 [package]
 name = "nc-neuralynx"
 description = "neuro-convert reader for Neuralynx recordings (Cheetah / Pegasus / BML / Neuraview: .ncs, .nse, .ntt, .nev)"
-version.workspace = true
+# This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
+version = "0.1.0"
 edition.workspace = true
 license.workspace = true
 

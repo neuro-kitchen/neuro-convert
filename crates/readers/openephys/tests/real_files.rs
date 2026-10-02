@@ -2,7 +2,7 @@
 //! `NeuralEnsemble/ephy_testing_data/openephysbinary`): GUI 0.6.0 Neuropixels + NI-DAQ with sync
 //! lines and TTL / message events, 0.5.0 with two record nodes × three recordings, 0.4.5 headstage +
 //! ADC channels. Skipped when `<data>/raw/openephys` is missing. Every value is cross-checked
-//! against neo by `tools/python/compare_openephys.py`.
+//! against neo by `python tools/python/compare openephys`.
 
 use std::path::{Path, PathBuf};
 

@@ -39,7 +39,7 @@ are not read (warning).
   time: the earliest `Time Opened` / `TimeCreated` (local time of the acquisition computer).
 
 ## Verification
-`tools/python/compare_neuralynx.py` converts each folder, reads it back with pynwb and compares
+`tools/python/compare neuralynx` converts each folder, reads it back with pynwb and compares
 with neo: every sample of every channel per segment / part and its start time, every spike time
 and waveform per wire and unit, every event time per (id, TTL). 2026-10-02, neo's GIN test files
 (`tools/python/fetch_gin.py neuralynx/<set>`): Cheetah 1.1.0, 4.0.2 (whole-µs rate), 5.4.0,

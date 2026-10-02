@@ -3,7 +3,7 @@
 //!
 //! Looked up as `<data>/raw/spikeglx/imec_385_100s`, where `<data>` is `$NC_DATA_DIR` or the workspace's
 //! git-ignored `data/` folder. Expected values are cross-checked with SpikeGLX's own conversion
-//! (`readSGLX.py`) and probeinterface by `tools/python/compare_spikeglx.py`.
+//! (`readSGLX.py`) and probeinterface by `python tools/python/compare spikeglx`.
 
 use std::path::{Path, PathBuf};
 

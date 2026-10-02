@@ -40,7 +40,7 @@ or a "critical load restart" comment, is a clock reset: each clock epoch is a co
 `start_time`: the NSx (else NEV) time origin, UTC.
 
 ## Verification
-`tools/python/compare_blackrock.py` converts each container, reads it back with pynwb and compares
+`tools/python/compare blackrock` converts each container, reads it back with pynwb and compares
 with neo per NSx file: every sample of every channel, part start times, every spike time and
 waveform per electrode and unit, digital input words. 2026-10-02, neo's GIN test files
 (`tools/python/fetch_gin.py blackrock/<set>`):

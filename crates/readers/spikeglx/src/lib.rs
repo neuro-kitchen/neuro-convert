@@ -17,6 +17,15 @@
 //! the reference stream's clock (the first probe, else NI, else OneBox): its start time and
 //! sample rate are corrected and events follow ([`sync`]).
 
+/// This crate's version (`nc-spikeglx`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod bin;
 pub mod files;
 pub mod meta;
@@ -43,6 +52,14 @@ pub struct SpikeGlx;
 impl Reader for SpikeGlx {
     fn name(&self) -> &'static str {
         "spikeglx"
+    }
+    fn version(&self) -> &'static str {
+        crate::VERSION
+    }
+
+    /// Compared with its reference reader on real data (docs/formats).
+    fn maturity(&self) -> nc_core::Maturity {
+        nc_core::Maturity::Verified
     }
 
     fn description(&self) -> &'static str {
