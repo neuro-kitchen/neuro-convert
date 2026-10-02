@@ -34,6 +34,11 @@ impl SampleType {
             SampleType::F64 => "float64",
         }
     }
+
+    /// The type named `name` (as [`name`](Self::name) spells it).
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::I8, Self::I16, Self::U16, Self::I32, Self::I64, Self::F32, Self::F64].into_iter().find(|t| t.name() == name)
+    }
 }
 
 /// Order of multi-channel samples in storage.

@@ -20,6 +20,19 @@ pub struct Provenance {
 pub struct SourceFile {
     pub path: PathBuf,
     pub bytes: u64,
+    /// Checksum the source records for this file (e.g. SpikeGLX `fileSHA1`), checked before
+    /// converting.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checksum: Option<Checksum>,
+}
+
+/// A file checksum recorded by the source format.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Checksum {
+    /// `sha1`.
+    pub algorithm: String,
+    /// Lowercase hex.
+    pub value: String,
 }
 
 impl Provenance {
@@ -30,6 +43,14 @@ impl Provenance {
     pub fn add_file(&mut self, path: impl Into<PathBuf>) {
         let path = path.into();
         let bytes = std::fs::metadata(&path).map_or(0, |m| m.len());
-        self.files.push(SourceFile { path, bytes });
+        self.files.push(SourceFile { path, bytes, checksum: None });
+    }
+
+    /// Records the checksum the source declares for `path` (a file added with
+    /// [`add_file`](Self::add_file)).
+    pub fn set_checksum(&mut self, path: &std::path::Path, algorithm: &str, value: &str) {
+        if let Some(f) = self.files.iter_mut().find(|f| f.path == path) {
+            f.checksum = Some(Checksum { algorithm: algorithm.into(), value: value.to_ascii_lowercase() });
+        }
     }
 }
