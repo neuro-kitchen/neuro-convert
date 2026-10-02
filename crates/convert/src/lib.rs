@@ -19,6 +19,10 @@ pub use nc_core as core;
 pub use nc_nwb as nwb;
 #[cfg(feature = "intan")]
 pub use nc_intan as intan;
+#[cfg(feature = "blackrock")]
+pub use nc_blackrock as blackrock;
+#[cfg(feature = "neuralynx")]
+pub use nc_neuralynx as neuralynx;
 #[cfg(feature = "openephys")]
 pub use nc_openephys as openephys;
 #[cfg(feature = "spikeglx")]
