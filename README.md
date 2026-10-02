@@ -32,6 +32,11 @@ sorts), `--only A,B` (load only these streams / stores).
 
 Not yet: probe library and headstage wiring; Plexon, Spike2 and other formats.
 
+Release archives (CLI + app with every reader and HDF5 built in, docs, example metadata):
+`scripts/release.sh` → `dist/neuro-convert-<version>-<target>.tar.gz`. Compatibility, maturity
+and change rules: [`docs/compatibility.md`](docs/compatibility.md); adding a format:
+[`docs/readers/README.md`](docs/readers/README.md).
+
 Ctrl-C during `convert` stops cleanly and removes the partial store; every conversion is verified
 (structure, and content compared with the source: `--verify full|sampled|off`, plus SpikeGLX's own
 file checksums at `full`) and leaves `<output>.report.json` with the content digests.
@@ -76,16 +81,13 @@ run time with `Registry::builtin().with(MyReader)`.
 cargo test --workspace          # unit + integration
 uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector \
     tools/python/validate_nwb.py target/nwb-test/small.nwb.zarr --small
-cargo build --release && uv run --no-project --with tdt --with numpy \
-    tools/python/compare_tdt.py data/raw/tdt-examples/15-25-33_meps
-uv run --no-project --with numpy --with probeinterface \
-    tools/python/compare_spikeglx.py data/raw/spikeglx/imec_385_100s/imec_385_100s.ap.bin
-uv run --no-project --with neo --with pynwb --with hdmf-zarr \
-    tools/python/compare_intan.py data/raw/intan/*
-uv run --no-project --with neo --with pynwb --with hdmf-zarr \
-    tools/python/compare_openephys.py data/raw/openephys/v0.6.x_neuropixels_with_sync
+python3 tools/python/fetch_gin.py --all            # neo's public test data → data/raw
+python3 tools/python/fetch_gin.py --check          # local test data against testdata.toml
+cargo build --release && uv run --no-project --with neo --with pynwb --with hdmf-zarr \
+    --with tdt --with probeinterface python tools/python/compare <format> <path> ... [--hdf5]
 ```
-Real-data tests read `raw/tdt-examples/15-25-33_meps` (TDT), `raw/spikeglx/imec_385_100s`
-(SpikeGLX), `raw/intan/` and `raw/openephys/` (neo's public test files on GIN,
-`NeuralEnsemble/ephy_testing_data`) under `data/` or `$NC_DATA_DIR`, and skip (with a message)
-when absent.
+`tools/python/compare` compares each reader with a reference reader (TDT's `tdt.read_block`,
+SpikeGLX's conversion rule + probeinterface, neo for Intan, Open Ephys, Blackrock, Neuralynx),
+through the whole pipeline (`--hdf5`: through the HDF5 writer). `tools/python/testdata.toml` lists
+the data sets with their digests. Real-data tests read `data/raw/` (or `$NC_DATA_DIR`) and skip
+(with a message) when it is absent.

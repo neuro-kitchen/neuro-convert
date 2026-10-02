@@ -2,9 +2,9 @@
 Type=Application
 Name=neuro-convert
 GenericName=Neurophysiology to NWB converter
-Comment=Inspect neurophysiology recordings (TDT, SpikeGLX) and convert them to NWB (Zarr)
+Comment=Inspect neurophysiology recordings (TDT, SpikeGLX, Intan, Open Ephys, Blackrock, Neuralynx) and convert them to NWB (Zarr or HDF5)
 Exec=neuro-convert-app %f
 Terminal=false
 Categories=Science;Biology;
-Keywords=NWB;neuroscience;electrophysiology;TDT;SpikeGLX;Neuropixels;
+Keywords=NWB;neuroscience;electrophysiology;TDT;SpikeGLX;Neuropixels;Intan;OpenEphys;Blackrock;Neuralynx;
 StartupWMClass=org.neuro-kitchen.neuro-convert
