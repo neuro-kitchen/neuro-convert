@@ -38,6 +38,8 @@ pub struct PathRow {
     pub path: SharedString,
     pub source: SharedString,
     pub detail: SharedString,
+    /// The item it is written from (for links back to it).
+    pub target: Option<nc_convert::core::Target>,
 }
 
 impl RenderOnce for PathRow {

@@ -1,7 +1,11 @@
-//! The preview: which stream, which channels (pages of 16 or an electrode group), which time
-//! window, gain, and event markers. Data comes from the sampler thread (newest request wins,
-//! recent results cached); nothing is fetched while drawing. Listens to: PreviewRequested,
-//! RecordingOpened.
+//! The preview: which stream, which channels (all, or an electrode group, scrolled N lanes at a
+//! time), which time window, gain, and event markers. Data comes from the sampler thread (newest
+//! request wins, recent results cached); nothing is fetched while drawing.
+//!
+//! Smooth navigation: the sampler is asked for three windows around the view (aligned to a grid
+//! of window lengths), so panning and dragging only re-slice what is already there
+//! ([`resample`]); a new request goes out when the view leaves the fetched range or the zoom
+//! changes. Listens to: PreviewRequested, RecordingOpened.
 
 use std::sync::Arc;
 
@@ -16,8 +20,10 @@ use crate::store::Store;
 
 /// Envelope columns per view (drawn stretched to the panel width).
 pub const COLUMNS: usize = 1200;
-/// Channels per page.
-pub const PAGE: usize = 16;
+/// Lanes shown at once by default.
+pub const LANES: usize = 16;
+/// Lane counts offered.
+pub const LANE_CHOICES: [usize; 5] = [4, 8, 16, 32, 64];
 /// Recent results kept.
 const CACHE: usize = 16;
 
@@ -28,16 +34,9 @@ pub struct ChannelSet {
     pub channels: Vec<usize>,
 }
 
-/// Pages of [`PAGE`] channels (1-based labels), then one set per electrode group when the
-/// channels belong to more than one group.
+/// All channels, then one set per electrode group when the channels belong to more than one.
 pub fn channel_sets(s: &Session, recording: &str, count: usize) -> Vec<ChannelSet> {
-    let mut sets: Vec<ChannelSet> = (0..count)
-        .step_by(PAGE)
-        .map(|a| {
-            let b = (a + PAGE).min(count);
-            ChannelSet { label: format!("Channels {}–{}", a + 1, b), channels: (a..b).collect() }
-        })
-        .collect();
+    let mut sets = vec![ChannelSet { label: format!("All channels ({count})"), channels: (0..count).collect() }];
     let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
     for (c, e) in s.channel_electrodes(recording).iter().enumerate() {
         let Some(e) = e else { continue };
@@ -61,6 +60,44 @@ pub fn window(samples: u64, rate: f64, start: f64, span: f64) -> std::ops::Range
     s0..s1
 }
 
+/// The time range to fetch for a view: three window lengths around it, aligned to a grid of
+/// window lengths (so small pans stay inside it).
+pub fn fetch_range(start: f64, span: f64) -> (f64, f64) {
+    let cell = (start / span).floor();
+    (((cell - 1.0) * span).max(0.0), 3.0 * span)
+}
+
+/// The visible `columns` of `channels` for `[start, start + span)` cut out of fetched lanes
+/// (`key` says what they cover; channels or times not covered are NaN gaps). Works for any
+/// fetched resolution, so a zoom shows coarser data until the new data arrives.
+pub fn resample(key: &Key, lanes: &[Vec<(f32, f32)>], channels: &[usize], rate: f64, start: f64, span: f64, columns: usize) -> Vec<Vec<(f32, f32)>> {
+    let gap = (f32::NAN, f32::NAN);
+    let len = (key.samples.end - key.samples.start) as f64;
+    channels
+        .iter()
+        .map(|c| {
+            let Some(lane) = key.channels.iter().position(|x| x == c).and_then(|i| lanes.get(i)) else { return vec![gap; columns] };
+            let n = lane.len() as f64;
+            if n == 0.0 || len <= 0.0 {
+                return vec![gap; columns];
+            }
+            (0..columns)
+                .map(|i| {
+                    let t0 = start + i as f64 * span / columns as f64;
+                    let s0 = t0 * rate - key.samples.start as f64;
+                    let s1 = s0 + span / columns as f64 * rate;
+                    if s1 <= 0.0 || s0 >= len {
+                        return gap;
+                    }
+                    let c0 = ((s0 / len * n).floor().max(0.0)) as usize;
+                    let c1 = ((s1 / len * n).ceil().min(n) as usize).max(c0 + 1).min(lane.len());
+                    lane[c0..c1].iter().filter(|(a, b)| a.is_finite() && b.is_finite()).fold(gap, |(lo, hi), &(a, b)| (if lo.is_nan() { a } else { lo.min(a) }, if hi.is_nan() { b } else { hi.max(b) }))
+                })
+                .collect()
+        })
+        .collect()
+}
+
 /// Largest |value| over all lanes (shared scale).
 pub fn peak(lanes: &[Vec<(f32, f32)>]) -> f32 {
     lanes.iter().flatten().filter(|(a, b)| a.is_finite() && b.is_finite()).map(|(a, b)| a.abs().max(b.abs())).fold(0.0, f32::max)
@@ -81,13 +118,18 @@ pub struct PreviewVm {
     pub span: f64,
     pub sets: Vec<ChannelSet>,
     pub set: usize,
+    /// First shown position in the set's channel list, and how many lanes are shown.
+    pub first: usize,
+    pub lanes: usize,
     pub gain: Entity<SliderState>,
     /// Scale each channel to its own peak instead of one scale for all.
     pub fit_each: bool,
     /// Event series drawn as markers.
     pub marker: Option<String>,
-    /// What is drawn (it may lag the wanted view while sampling).
+    /// The latest fetched data (it may cover only part of the view while sampling).
     pub shown: Option<(Key, Lanes)>,
+    /// The last key asked for (a pan inside its range asks nothing).
+    requested: Option<Key>,
     pub waiting: bool,
     pub error: Option<String>,
     cache: Vec<(Key, Lanes)>,
@@ -123,7 +165,9 @@ impl PreviewVm {
                         this.recording = rec;
                         this.start = 0.0;
                         this.set = 0;
+                        this.first = 0;
                         this.shown = None;
+                        this.requested = None;
                         this.cache.clear();
                         this.request(cx);
                     }
@@ -140,10 +184,13 @@ impl PreviewVm {
             span: 1.0,
             sets: Vec::new(),
             set: 0,
+            first: 0,
+            lanes: LANES,
             gain,
             fit_each: false,
             marker: None,
             shown: None,
+            requested: None,
             waiting: false,
             error: None,
             cache: Vec::new(),
@@ -151,25 +198,46 @@ impl PreviewVm {
         }
     }
 
-    pub fn key(&self) -> Option<Key> {
-        let i = self.recording.as_ref()?.info();
-        let channels = self.sets.get(self.set).map(|s| s.channels.clone()).unwrap_or_default();
-        Some(Key { recording: i.name.clone(), samples: window(i.samples, i.sample_rate, self.start, self.span), channels, columns: COLUMNS })
+    /// Channels of the selected set.
+    pub fn set_channels(&self) -> &[usize] {
+        self.sets.get(self.set).map_or(&[], |s| s.channels.as_slice())
     }
 
-    /// Shows the wanted view from the cache, or asks the sampler for it.
+    /// The channels on screen, top to bottom.
+    pub fn visible_channels(&self) -> Vec<usize> {
+        self.set_channels().iter().skip(self.first).take(self.lanes).copied().collect()
+    }
+
+    /// What to fetch for the current view.
+    pub fn key(&self) -> Option<Key> {
+        let i = self.recording.as_ref()?.info();
+        let (from, len) = fetch_range(self.start, self.span);
+        Some(Key { recording: i.name.clone(), samples: window(i.samples, i.sample_rate, from, len), channels: self.visible_channels(), columns: 3 * COLUMNS })
+    }
+
+    /// The visible lanes cut out of the fetched data.
+    pub fn visible(&self) -> Option<Lanes> {
+        let (key, lanes) = self.shown.as_ref()?;
+        let rate = self.recording.as_ref()?.info().sample_rate;
+        Some(Arc::new(resample(key, lanes, &self.visible_channels(), rate, self.start, self.span, COLUMNS)))
+    }
+
+    /// Shows the wanted view from the cache, or asks the sampler for it (once per key).
     fn request(&mut self, cx: &mut Context<Self>) {
         let (Some(rec), Some(key)) = (self.recording.clone(), self.key()) else {
             cx.notify();
             return;
         };
-        if let Some((_, lanes)) = self.cache.iter().find(|(k, _)| *k == key) {
-            self.shown = Some((key, lanes.clone()));
+        if self.shown.as_ref().is_some_and(|(k, _)| *k == key) {
             self.waiting = false;
-        } else {
+        } else if let Some((_, lanes)) = self.cache.iter().find(|(k, _)| *k == key) {
+            self.shown = Some((key.clone(), lanes.clone()));
+            self.waiting = false;
+        } else if self.requested.as_ref() != Some(&key) {
             self.waiting = true;
-            self.sampler.request(key, rec, self.reply.clone());
+            self.sampler.request(key.clone(), rec, self.reply.clone());
         }
+        self.requested = Some(key);
         cx.notify();
     }
 
@@ -182,9 +250,12 @@ impl PreviewVm {
                     self.cache.remove(0);
                 }
                 if Some(&key) == self.key().as_ref() {
-                    self.shown = Some((key, lanes));
                     self.waiting = false;
                     self.error = None;
+                }
+                // Even a superseded answer is closer than nothing (it is re-sliced to the view)
+                if self.shown.as_ref().is_none_or(|(k, _)| Some(k) != self.key().as_ref()) {
+                    self.shown = Some((key, lanes));
                 }
             }
             Err(e) => {
@@ -215,8 +286,30 @@ impl PreviewVm {
     pub fn select_set(&mut self, set: usize, cx: &mut Context<Self>) {
         if set < self.sets.len() {
             self.set = set;
+            self.first = 0;
             self.request(cx);
         }
+    }
+
+    /// Scrolls the lanes by `delta` channels (clamped).
+    pub fn scroll_channels(&mut self, delta: isize, cx: &mut Context<Self>) {
+        self.set_first(self.first as isize + delta, cx);
+    }
+
+    /// Shows channels from position `first` of the set (clamped).
+    pub fn set_first(&mut self, first: isize, cx: &mut Context<Self>) {
+        let max = self.set_channels().len().saturating_sub(self.lanes);
+        let first = first.clamp(0, max as isize) as usize;
+        if first != self.first {
+            self.first = first;
+            self.request(cx);
+        }
+    }
+
+    pub fn set_lanes(&mut self, lanes: usize, cx: &mut Context<Self>) {
+        self.lanes = lanes.max(1);
+        self.set_first(self.first as isize, cx);
+        self.request(cx);
     }
 
     /// Event series of the session, for the markers dropdown.
@@ -238,12 +331,12 @@ impl PreviewVm {
 
     /// Site positions (µm) of the stream's channels, and whether each is shown.
     pub fn sites(&self, cx: &App) -> Vec<([f32; 2], bool)> {
-        let (Some(rec), Some(key)) = (&self.recording, self.key()) else { return Vec::new() };
+        let (Some(rec), visible) = (&self.recording, self.visible_channels()) else { return Vec::new() };
         let Some(s) = self.store.read(cx).ws.session() else { return Vec::new() };
         s.channel_electrodes(&rec.info().name)
             .iter()
             .enumerate()
-            .filter_map(|(c, e)| Some(((*e).and_then(|e| s.electrodes[e].position_um).map(|p| [p[0], p[1]])?, key.channels.contains(&c))))
+            .filter_map(|(c, e)| Some(((*e).and_then(|e| s.electrodes[e].position_um).map(|p| [p[0], p[1]])?, visible.contains(&c))))
             .collect()
     }
 
@@ -256,46 +349,29 @@ impl PreviewVm {
         cx.notify();
     }
 
-    pub fn can_pan(&self, direction: f64) -> bool {
-        if direction < 0.0 { self.start > 0.0 } else { self.start + self.span < self.duration() }
+    /// Shows `[start, start + span)` (clamped to the recording).
+    pub fn set_view(&mut self, start: f64, span: f64, cx: &mut Context<Self>) {
+        let d = self.duration().max(0.002);
+        self.span = span.clamp(0.002, d);
+        self.start = start.clamp(0.0, (d - self.span).max(0.0));
+        self.request(cx);
     }
 
     /// Moves by `fraction` of the visible span (negative: earlier).
     pub fn pan(&mut self, fraction: f64, cx: &mut Context<Self>) {
-        let max = (self.duration() - self.span).max(0.0);
-        self.start = (self.start + fraction * self.span).clamp(0.0, max);
-        self.request(cx);
+        self.set_view(self.start + fraction * self.span, self.span, cx);
     }
 
-    /// Centers the window on `fraction` of the recording (overview bar).
-    pub fn jump(&mut self, fraction: f64, cx: &mut Context<Self>) {
-        let max = (self.duration() - self.span).max(0.0);
-        self.start = (fraction.clamp(0.0, 1.0) * self.duration() - self.span / 2.0).clamp(0.0, max);
-        self.request(cx);
+    /// Zooms by `factor` (> 1: more time) keeping the time under `anchor` (0..1 across the
+    /// view) in place.
+    pub fn zoom_at(&mut self, factor: f64, anchor: f64, cx: &mut Context<Self>) {
+        let at = self.start + anchor.clamp(0.0, 1.0) * self.span;
+        let span = (self.span * factor).clamp(0.002, self.duration().max(0.002));
+        self.set_view(at - anchor.clamp(0.0, 1.0) * span, span, cx);
     }
 
     pub fn zoom(&mut self, factor: f64, cx: &mut Context<Self>) {
-        let center = self.start + self.span / 2.0;
-        self.span = (self.span * factor).clamp(0.002, self.duration().max(0.002));
-        let max = (self.duration() - self.span).max(0.0);
-        self.start = (center - self.span / 2.0).clamp(0.0, max);
-        self.request(cx);
-    }
-
-    /// Mouse wheel: channels; with Ctrl zoom; with Shift pan.
-    pub fn wheel(&mut self, dy: f32, ctrl: bool, shift: bool, cx: &mut Context<Self>) {
-        if dy == 0.0 {
-            return;
-        }
-        let down = dy < 0.0;
-        if ctrl {
-            self.zoom(if down { 1.25 } else { 0.8 }, cx);
-        } else if shift {
-            self.pan(if down { 0.2 } else { -0.2 }, cx);
-        } else {
-            let next = if down { self.set + 1 } else { self.set.saturating_sub(1) };
-            self.select_set(next.min(self.sets.len().saturating_sub(1)), cx);
-        }
+        self.zoom_at(factor, 0.5, cx);
     }
 
     /// Time axis ticks: (position 0..1, label).
@@ -306,8 +382,8 @@ impl PreviewVm {
 
     /// (peak used for every lane, scale bar value and its label) for the shared scale.
     pub fn scale(&self, cx: &App) -> Option<(f32, f32, String)> {
-        let (_, lanes) = self.shown.as_ref()?;
-        let p = peak(lanes);
+        let lanes = self.visible()?;
+        let p = peak(&lanes);
         if self.fit_each || p <= 0.0 {
             return None;
         }
@@ -337,10 +413,31 @@ mod tests {
         let mut ws = workspace(&scratch("preview-vm"));
         open(&mut ws, "session.fake");
         let sets = channel_sets(ws.session().unwrap(), "Wav1", 40);
-        assert_eq!(sets.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["Channels 1–16", "Channels 17–32", "Channels 33–40"]);
-        assert_eq!(sets[2].channels, (32..40).collect::<Vec<_>>());
+        assert_eq!(sets.iter().map(|s| s.label.as_str()).collect::<Vec<_>>(), ["All channels (40)"]);
+        assert_eq!(sets[0].channels, (0..40).collect::<Vec<_>>());
 
         assert_eq!(markers(&[0.1, 0.5, 1.2, 1.4, 3.0], 1.0, 1.0), vec![0.2, 0.4]);
         assert_eq!(peak(&[vec![(-2.0, 1.0)], vec![(f32::NAN, f32::NAN), (0.0, 3.0)]]), 3.0);
+    }
+
+    #[test]
+    fn test_fetch_range_and_resample() {
+        // Three windows around the view, on a grid of window lengths
+        assert_eq!(fetch_range(5.3, 1.0), (4.0, 3.0));
+        assert_eq!(fetch_range(5.9, 1.0), (4.0, 3.0), "small pans stay in the fetched range");
+        assert_eq!(fetch_range(0.2, 1.0), (0.0, 3.0));
+
+        // Fetched: channels 3 and 5, samples 0..8 in 4 columns (2 samples each), 1 Hz
+        let key = Key { recording: "r".into(), samples: 0..8, channels: vec![3, 5], columns: 4 };
+        let lanes = vec![vec![(0.0, 1.0), (1.0, 2.0), (2.0, 3.0), (3.0, 4.0)], vec![(-1.0, 0.0); 4]];
+        // Seconds 2..6 in 2 columns: column 0 = samples 2..4 = fetched column 1, column 1 = column 2
+        let out = resample(&key, &lanes, &[3, 9], 1.0, 2.0, 4.0, 2);
+        assert_eq!(out[0], vec![(1.0, 2.0), (2.0, 3.0)]);
+        // Seconds 1..7 in 2 columns: each spans parts of two fetched columns (min / max of both)
+        assert_eq!(resample(&key, &lanes, &[3], 1.0, 1.0, 6.0, 2)[0], vec![(0.0, 2.0), (2.0, 4.0)]);
+        assert!(out[1].iter().all(|(a, b)| a.is_nan() && b.is_nan()), "channel 9 not fetched: gap");
+        // Outside the fetched time: gaps
+        let out = resample(&key, &lanes, &[3], 1.0, 10.0, 2.0, 2);
+        assert!(out[0][0].0.is_nan());
     }
 }

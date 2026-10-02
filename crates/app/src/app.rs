@@ -32,6 +32,8 @@ pub struct NcApp {
     /// Kept for tests, which drive the stream card through it.
     #[cfg_attr(not(test), allow(dead_code))]
     pub(crate) contents_vm: Entity<ContentsVm>,
+    #[cfg_attr(not(test), allow(dead_code))]
+    pub(crate) preview_vm: Entity<PreviewVm>,
     source: Entity<SourceView>,
     contents: Entity<ContentsView>,
     metadata: Entity<MetadataView>,
@@ -51,7 +53,7 @@ impl NcApp {
         let preview_vm = cx.new(|cx| PreviewVm::new(store.clone(), cx));
         let plan_vm = cx.new(|cx| PlanVm::new(store.clone(), cx));
         let convert_vm = cx.new(|cx| ConvertVm::new(store.clone(), window, cx));
-        let preview = cx.new(|cx| PreviewView::new(preview_vm, cx));
+        let preview = cx.new(|cx| PreviewView::new(preview_vm.clone(), cx));
         let source = cx.new(|cx| SourceView::new(source_vm, cx));
         let contents = cx.new(|cx| ContentsView::new(contents_vm.clone(), preview, cx));
         let metadata = cx.new(|cx| MetadataView::new(metadata_vm, cx));
@@ -91,7 +93,7 @@ impl NcApp {
         ];
         let focus = cx.focus_handle();
         window.focus(&focus, cx);
-        Self { store, nav, contents_vm, source, contents, metadata, review, follow_system_theme, focus, _subscriptions: subscriptions }
+        Self { store, nav, contents_vm, preview_vm, source, contents, metadata, review, follow_system_theme, focus, _subscriptions: subscriptions }
     }
 
     fn ws<'a>(&self, cx: &'a gpui_kit::App) -> &'a Workspace {
@@ -611,12 +613,77 @@ mod tests {
             })
             .unwrap()
         });
-        // Panning right is possible on a 2 s recording with a 1 s window
-        click(cx, window, "pan-right");
+        // Dragging the traces left shows later times; keys and the overview move it too
+        let preview = cx.update(|cx| app.read(cx).preview_vm.clone());
+        let start = |cx: &mut TestAppContext| cx.update(|cx| preview.read(cx).start);
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            let b = window.find("preview-traces").bounds();
+            let (y, x) = (b.origin.y + b.size.height / 2., b.origin.x + b.size.width / 2.);
+            window.drag(gpui_kit::point(x, y), gpui_kit::point(x - px(200.), y), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        let dragged = start(cx);
+        assert!(dragged > 0.05, "drag moved the view: {dragged}");
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.press("left", cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert!(start(cx) < dragged, "← moves earlier (the traces have focus after the drag)");
+        // Ctrl+wheel zooms; the time under the pointer stays
+        cx.update(|cx| preview.update(cx, |vm, cx| vm.zoom_at(0.5, 0.0, cx)));
+        cx.update(|cx| assert_eq!(preview.read(cx).span, 0.5));
         // Selecting the other stream in the tree switches the preview
         let contents = cx.update(|cx| app.read(cx).contents_vm.clone());
         cx.update_window(window, |_, window, cx| contents.update(cx, |vm, cx| vm.select_id("s/Temp", window, cx))).unwrap();
         cx.run_until_parked();
         assert_eq!(cx.update(|cx| store.read(cx).ws.preview.clone()), Some("Temp".into()));
+    }
+
+    #[gpui_kit::test]
+    fn panels_toggle_and_items_show_their_rows(cx: &mut TestAppContext) {
+        let (window, store, app) = open(cx, &scratch("panels"));
+        open_recording(cx, &store, "session.fake");
+        assert_eq!(step(cx, &app), Step::Contents);
+        let visible = |cx: &mut TestAppContext, id: &'static str| cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.try_find(id).is_some_and(|e| e.bounds().size.width > px(0.))
+        }).unwrap();
+        assert!(visible(cx, "tree-panel") && visible(cx, "inspector-panel"));
+        // The heading says what is shown and where it goes
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            assert!(window.find("contents-heading").bounds().size.height > px(20.));
+        }).unwrap();
+        click(cx, window, "toggle-tree");
+        assert!(!visible(cx, "tree-panel"), "tree hidden");
+        cx.update(|cx| assert!(!store.read(cx).ws.settings.panels.tree, "remembered"));
+        click(cx, window, "toggle-tree");
+        assert!(visible(cx, "tree-panel"));
+        click(cx, window, "inspector-panel-close");
+        assert!(!visible(cx, "inspector-panel"));
+
+        // An event series shows its rows in a table
+        let contents = cx.update(|cx| app.read(cx).contents_vm.clone());
+        cx.update_window(window, |_, window, cx| contents.update(cx, |vm, cx| vm.select_id("e/Tick", window, cx))).unwrap();
+        cx.run_until_parked();
+        assert!(visible(cx, "item-table"));
+
+        // Review: the NWB structure panel links back to Contents
+        go(cx, &app, Step::Review);
+        assert!(!visible(cx, "structure-panel"), "closed by default");
+        click(cx, window, "toggle-structure");
+        assert!(visible(cx, "structure-panel"));
+        cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.click(("structure-0", 1usize), cx);
+        })
+        .unwrap();
+        cx.run_until_parked();
+        assert_eq!(step(cx, &app), Step::Contents);
+        cx.update(|cx| assert_eq!(contents.read(cx).selected, crate::viewmodels::contents::Selection::Stream("Temp".into())));
     }
 }

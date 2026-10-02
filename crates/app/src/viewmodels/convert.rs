@@ -5,7 +5,7 @@
 use std::path::PathBuf;
 
 use gpui_kit::component::input::{InputEvent, InputState};
-use gpui_kit::{AppContext as _, ClipboardItem, Context, Entity, Subscription, Window};
+use gpui_kit::{App, AppContext as _, ClipboardItem, Context, Entity, Subscription, Window};
 use nc_convert::core::Level;
 use nc_convert::nwb::ChunkPolicy;
 use nc_convert::Stage;
@@ -44,18 +44,7 @@ pub struct ResultView {
 
 pub fn convert_state(ws: &Workspace) -> ConvertState {
     let writing = ws.state.phase == Phase::Writing;
-    let progress = writing.then(|| match (&ws.stage, &ws.progress) {
-        (Some(Stage::Verifying), _) => (100.0, "Verifying the written store…".to_string()),
-        (_, Some(p)) => {
-            let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 0.0 };
-            let secs = p.elapsed.as_secs_f64();
-            let rate = p.done as f64 / 1e6 / secs.max(1e-9);
-            let left = if p.done > 0 { secs * p.total.saturating_sub(p.done) as f64 / p.done as f64 } else { f64::NAN };
-            let left = if left.is_finite() { format!(", about {} left", duration(left)) } else { String::new() };
-            (pct as f32, format!("{pct:.1} % · {rate:.1} M samples/s · {}{left}", duration(secs)))
-        }
-        _ => (0.0, "Starting…".to_string()),
-    });
+    let progress = writing.then(|| progress_line(ws.stage, ws.progress.as_ref()));
     let result = ws.state.last_outcome.as_ref().map(|o| {
         let (ok, headline) = match o {
             Outcome::Converted(p) => (Some(true), format!("Converted and verified: {}", p.display())),
@@ -66,7 +55,12 @@ pub fn convert_state(ws: &Workspace) -> ConvertState {
         ResultView {
             ok,
             headline,
-            summary: r.map(|r| format!("{} series, {:.2} G samples in {}", r.summary.series, r.summary.samples as f64 / 1e9, duration(r.summary.seconds))),
+            summary: r.map(|r| {
+                let written = format!("{} series, {:.2} G samples in {}", r.summary.series, r.summary.samples as f64 / 1e9, duration(r.summary.seconds));
+                let source = (!r.source_checks.is_empty()).then(|| format!("; source checksums: {}/{} match", r.source_checks.iter().filter(|c| c.ok()).count(), r.source_checks.len()));
+                let content = r.digests.as_ref().map_or_else(|| "; content not compared (verification off)".to_string(), |d| format!("; {}", d.summary()));
+                format!("{written}{}{content}", source.unwrap_or_default())
+            }),
             issues: r.map(|r| r.verification.iter().map(|i| IssueRow { error: i.level == Level::Error, text: i.message.clone().into(), target: i.target.clone() }).collect()).unwrap_or_default(),
             output: r.map(|r| r.output.clone()),
             report: r.map(|r| r.default_path()),
@@ -83,6 +77,29 @@ pub fn convert_state(ws: &Workspace) -> ConvertState {
         progress,
         result,
     }
+}
+
+/// Percent and text for the running stage: hashing the source (MB/s), writing (samples/s, time
+/// left) or comparing with the source.
+pub fn progress_line(stage: Option<Stage>, p: Option<&nc_convert::nwb::Progress>) -> (f32, String) {
+    let Some(p) = p else {
+        return match stage {
+            Some(Stage::CheckingSource) => (0.0, "Checking the source files' checksums…".to_string()),
+            Some(Stage::Verifying) => (0.0, "Comparing the written data with the source…".to_string()),
+            _ => (0.0, "Starting…".to_string()),
+        };
+    };
+    let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 0.0 };
+    let secs = p.elapsed.as_secs_f64();
+    let rate = p.done as f64 / 1e6 / secs.max(1e-9);
+    let left = if p.done > 0 { secs * p.total.saturating_sub(p.done) as f64 / p.done as f64 } else { f64::NAN };
+    let left = if left.is_finite() { format!(", about {} left", duration(left)) } else { String::new() };
+    let line = match stage {
+        Some(Stage::CheckingSource) => format!("Checking source checksums: {pct:.1} % · {rate:.0} MB/s{left}"),
+        Some(Stage::Verifying) => format!("Comparing with the source: {pct:.1} %{left}"),
+        _ => format!("{pct:.1} % · {rate:.1} M samples/s · {}{left}", duration(secs)),
+    };
+    (pct as f32, line)
 }
 
 /// `N errors: Description, Time zone, …` (`None` without errors).
@@ -124,11 +141,11 @@ pub struct ConvertVm {
 
 impl ConvertVm {
     pub fn new(store: Entity<Store>, window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let output = cx.new(|cx| InputState::new(window, cx).placeholder("output store (.nwb.zarr)"));
+        let output = cx.new(|cx| InputState::new(window, cx).placeholder("name.nwb.zarr"));
         let subscriptions = vec![
             cx.subscribe_in(&store, window, |this, store, event: &AppEvent, window, cx| {
                 if *event == AppEvent::OutputChanged {
-                    let text = store.read(cx).ws.output.as_ref().map(|p| p.display().to_string()).unwrap_or_default();
+                    let text = store.read(cx).ws.output.as_ref().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
                     if this.output.read(cx).value() != text {
                         this.output.update(cx, |s, cx| s.set_value(text, window, cx));
                     }
@@ -139,8 +156,10 @@ impl ConvertVm {
             }),
             cx.subscribe(&output, |this, state, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    // The input holds the store's name; the folder comes from Choose…
                     let text = state.read(cx).value().trim().to_string();
-                    let path = (!text.is_empty()).then(|| PathBuf::from(text));
+                    let folder = this.store.read(cx).ws.output.as_ref().and_then(|p| p.parent()).map(PathBuf::from);
+                    let path = (!text.is_empty()).then(|| folder.map_or_else(|| PathBuf::from(&text), |f| f.join(&text)));
                     this.store.update(cx, |s, cx| s.apply(cx, |ws| ws.set_output(path)));
                 }
             }),
@@ -171,6 +190,30 @@ impl ConvertVm {
 
     pub fn set_chunks(&mut self, chunks: ChunkPolicy, cx: &mut Context<Self>) {
         self.set_options(cx, |o| o.chunks = chunks);
+    }
+
+    /// The NWB structure panel is open (remembered).
+    pub fn structure_open(&self, cx: &App) -> bool {
+        self.store.read(cx).ws.settings.panels.structure
+    }
+
+    pub fn set_structure_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.store.update(cx, |s, _| {
+            let mut p = s.ws.settings.panels;
+            p.structure = open;
+            s.ws.set_panels(p);
+        });
+        cx.notify();
+    }
+
+    /// The output's folder: (shortened, full) for the line under the name.
+    pub fn folder(&self, cx: &App) -> Option<(String, String)> {
+        let parent = self.store.read(cx).ws.output.as_ref()?.parent()?.to_path_buf();
+        Some((crate::domain::format::short_path(&parent, crate::domain::format::home().as_deref(), 60), parent.display().to_string()))
+    }
+
+    pub fn set_verify(&mut self, verify: nc_convert::nwb::VerifyLevel, cx: &mut Context<Self>) {
+        self.set_options(cx, |o| o.verify = verify);
     }
 
     pub fn step_threads(&mut self, delta: isize, cx: &mut Context<Self>) {
@@ -208,12 +251,17 @@ mod tests {
         assert_eq!(pct, 25.0);
         assert!(line.starts_with("25.0 % · 0.0 M samples/s · 2.00 s, about 6.00 s left"), "{line}");
         assert!(convert_state(&ws).can_cancel);
+        // A new stage starts its own count
+        ws.write_event(nc_convert::Event::Stage(Stage::Verifying));
+        assert_eq!(convert_state(&ws).progress.unwrap().1, "Comparing the written data with the source…");
 
         let result = t.job.write(&t.output, &t.options, &t.cancel, &|_| {});
         ws.finish_write(t.job, result);
         let r = convert_state(&ws).result.unwrap();
         assert_eq!(r.ok, Some(true));
-        assert!(r.summary.unwrap().starts_with("2 series") && r.issues.is_empty() && r.report.unwrap().exists());
+        let summary = r.summary.unwrap();
+        assert!(summary.starts_with("2 series") && summary.contains("content matches the source"), "{summary}");
+        assert!(r.issues.is_empty() && r.report.unwrap().exists());
         assert!(diagnostics(&ws).contains("outcome: Some(Converted("));
     }
 }

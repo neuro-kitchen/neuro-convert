@@ -1,27 +1,27 @@
-//! ④ Review & convert: what will be written, the issues left (each links to its fix), the
-//! output, the only Convert button, progress and the result. The NWB structure and the write
-//! options are there but closed.
+//! ④ Review & convert: a centered column with what will be written, the issues left (each links
+//! to its fix), the output, the only Convert button, progress and the result. The NWB structure is
+//! a panel on the right (its rows link back to their item); the write options are closed.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::switch::Switch;
-use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Disableable as _, IconName, Sizable as _};
+use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Disableable as _, IconName, Selectable as _, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::{div, px, AnyElement, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, Styled as _, Subscription, Window};
+use gpui_kit::{div, px, AnyElement, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, StatefulInteractiveElement as _, Styled as _, Subscription, Window};
 use nc_convert::core::Level;
-use nc_convert::nwb::ChunkPolicy;
+use nc_convert::nwb::{ChunkPolicy, VerifyLevel};
 
 use crate::actions::{Cancel, ChooseOutput, Convert};
 use crate::viewmodels::nav::NavVm;
 use crate::viewmodels::{ConvertVm, PlanVm};
-use crate::widgets::{Card, FormRow, IssueList, IssueRow, Muted, ProgressCard, Section};
+use crate::widgets::{Card, FormRow, IssueList, IssueRow, Muted, ProgressCard, Section, SidePanel};
 
 pub struct ReviewView {
     plan: Entity<PlanVm>,
     convert: Entity<ConvertVm>,
     nav: Entity<NavVm>,
-    structure: bool,
     advanced: bool,
     _subscriptions: Vec<Subscription>,
 }
@@ -29,7 +29,7 @@ pub struct ReviewView {
 impl ReviewView {
     pub fn new(plan: Entity<PlanVm>, convert: Entity<ConvertVm>, nav: Entity<NavVm>, cx: &mut Context<Self>) -> Self {
         let subscriptions = vec![cx.observe(&plan, |_, _, cx| cx.notify()), cx.observe(&convert, |_, _, cx| cx.notify()), cx.observe(&nav, |_, _, cx| cx.notify())];
-        Self { plan, convert, nav, structure: false, advanced: false, _subscriptions: subscriptions }
+        Self { plan, convert, nav, advanced: false, _subscriptions: subscriptions }
     }
 
     fn toggle(&self, id: &'static str, open: bool, label: &'static str, cx: &mut Context<Self>, f: fn(&mut Self)) -> impl IntoElement + use<> {
@@ -53,6 +53,12 @@ impl ReviewView {
             let b = if s.options.chunks == policy { b.primary() } else { b.outline() };
             b.on_click(move |_, _, cx| vm.update(cx, |vm, cx| vm.set_chunks(policy, cx)))
         };
+        let verify = |label: &'static str, level: VerifyLevel| {
+            let vm = vm.clone();
+            let b = Button::new(label).small().label(label).disabled(w);
+            let b = if s.options.verify == level { b.primary() } else { b.outline() };
+            b.on_click(move |_, _, cx| vm.update(cx, |vm, cx| vm.set_verify(level, cx)))
+        };
         let step = |id: &'static str, icon: IconName, delta: isize| {
             let vm = vm.clone();
             Button::new(id).outline().xsmall().icon(icon).disabled(w).on_click(move |_, _, cx| vm.update(cx, |vm, cx| vm.step_threads(delta, cx)))
@@ -62,6 +68,10 @@ impl ReviewView {
             .pl_4()
             .child(gzip)
             .child(FormRow::new("Chunks", h_flex().gap_1().child(chunk("1 s", ChunkPolicy::Seconds(1.0))).child(chunk("auto (~10 MB)", ChunkPolicy::Auto))).help("How the data is split on disk; 1 s suits most readers"))
+            .child(
+                FormRow::new("Check after writing", h_flex().gap_1().child(verify("Sampled", VerifyLevel::Sampled)).child(verify("Full", VerifyLevel::Full)).child(verify("Off", VerifyLevel::Off)))
+                    .help("Reads the store back and compares it with the source. Sampled: first, last and random blocks (seconds). Full: everything, plus the source files' own checksums (about as long as writing)"),
+            )
             .child(
                 FormRow::new("Threads", h_flex().gap_2().items_center().child(step("threads-down", IconName::Minus, -1)).child(div().text_sm().child(s.options.threads.to_string())).child(step("threads-up", IconName::Plus, 1)))
                     .help("CPUs used for writing; the default leaves some free for the app"),
@@ -78,10 +88,11 @@ impl Render for ReviewView {
         }
         let rows = self.plan.read(cx).rows.clone().unwrap_or_default();
         let output = self.convert.read(cx).output.clone();
+        let folder = self.convert.read(cx).folder(cx);
         let issues: Vec<IssueRow> = self.nav.read(cx).issues(cx).into_iter().map(|i| IssueRow { error: i.level == Level::Error, text: i.message.into(), target: i.target }).collect();
         let nav = self.nav.clone();
         let theme = cx.theme();
-        let (success, danger, muted) = (theme.success, theme.danger, theme.muted_foreground);
+        let (success, danger, muted, border, hover) = (theme.success, theme.danger, theme.muted_foreground, theme.border, theme.accent);
 
         let summary = Card::new()
             .title("What will be written")
@@ -97,14 +108,19 @@ impl Render for ReviewView {
             .child(
                 FormRow::new(
                     "NWB store",
-                    h_flex()
+                    v_flex()
                         .gap_1()
-                        .child(div().flex_1().child(Input::new(&output).small().disabled(s.writing)))
-                        .child(Button::new("choose-output").small().outline().label("Choose…").disabled(s.writing).on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseOutput), cx))),
+                        .child(
+                            h_flex()
+                                .gap_1()
+                                .child(div().flex_1().child(Input::new(&output).small().disabled(s.writing)))
+                                .child(Button::new("choose-output").small().outline().label("Choose…").disabled(s.writing).on_click(|_, window, cx| window.dispatch_action(Box::new(ChooseOutput), cx))),
+                        )
+                        .children(folder.map(|(short, full)| div().id("output-folder").text_xs().text_color(muted).child(format!("in {short}")).tooltip(move |window, cx| gpui_kit::component::tooltip::Tooltip::new(full.clone()).build(window, cx)))),
                 )
                 .help("A folder ending in .nwb.zarr; an existing one is replaced"),
             )
-            .child(self.toggle("advanced", self.advanced, "Advanced: compression, chunks, threads", cx, |this| this.advanced = !this.advanced))
+            .child(self.toggle("advanced", self.advanced, "Advanced: compression, chunks, checks, threads", cx, |this| this.advanced = !this.advanced))
             .children(self.advanced.then(|| self.options(cx)));
 
         let convert_vm = self.convert.clone();
@@ -142,35 +158,75 @@ impl Render for ReviewView {
                 .child(h_flex().gap_2().flex_wrap().children(reveal).children(r.report.map(|p| Muted::new(format!("Report: {}", p.display())))))
         });
 
-        let mut structure = v_flex().gap_2().child(self.toggle("structure", self.structure, "Show NWB structure", cx, |this| this.structure = !this.structure));
-        if self.structure {
-            structure = structure.child(
-                v_flex()
-                    .gap_3()
-                    .pl_4()
-                    .child(Section::new("File").children(rows.file.iter().cloned().map(Muted::new)))
-                    .children(rows.sections.iter().filter(|(_, p)| !p.is_empty()).map(|(title, paths)| Section::new(title.clone()).children(paths.iter().cloned())))
-                    .children((!rows.skipped.is_empty()).then(|| Section::new(format!("Left out ({})", rows.skipped.len())).children(rows.skipped.iter().cloned().map(Muted::new)))),
-            );
-        }
+        let structure_open = self.convert.read(cx).structure_open(cx);
+        let structure_toggle = {
+            let vm = self.convert.clone();
+            let b = Button::new("toggle-structure").ghost().small().icon(IconName::PanelRight).label("NWB structure").tooltip("Show or hide what goes where in the NWB file");
+            let b = if structure_open { b.selected(true) } else { b };
+            b.on_click(move |_, _, cx| vm.update(cx, |vm, cx| vm.set_structure_open(!structure_open, cx)))
+        };
+        let summary = summary.aside(structure_toggle);
 
-        v_flex()
+        let column = v_flex()
             .id("convert-view")
             .test_support()
-            .size_full()
+            .flex_1()
+            .min_w_0()
+            .h_full()
             .p_6()
+            .items_center()
             .child(
                 v_flex()
                     .gap_4()
+                    .w_full()
                     .max_w(px(920.))
                     .child(summary)
                     .child(output_card)
                     .child(buttons)
                     .children(s.progress.map(|(pct, line)| ProgressCard::new(pct, line)))
-                    .children(result)
-                    .child(Card::new().child(structure)),
+                    .children(result),
             )
-            .overflow_y_scrollbar()
+            .overflow_y_scrollbar();
+
+        let panel = structure_open.then(|| {
+            let vm = self.convert.clone();
+            let link = |id: (SharedString, usize), row: &crate::widgets::PathRow| {
+                let nav = self.nav.clone();
+                let target = row.target.clone();
+                h_flex()
+                    .id(id)
+                    .test_support()
+                    .w_full()
+                    .rounded_md()
+                    .px_1()
+                    .when(target.is_some(), |this| this.cursor_pointer().hover(|s| s.bg(hover)))
+                    .on_click(move |_, _, cx| {
+                        if let Some(t) = target.clone() {
+                            nav.update(cx, |nav, cx| nav.reveal(t, cx));
+                        }
+                    })
+                    .child(row.clone())
+            };
+            let mut sections = vec![Section::new("File").children(rows.file.iter().cloned().map(Muted::new)).into_any_element()];
+            for (k, (title, paths)) in rows.sections.iter().enumerate().filter(|(_, (_, p))| !p.is_empty()) {
+                sections.push(Section::new(title.clone()).children(paths.iter().enumerate().map(|(i, p)| link((SharedString::from(format!("structure-{k}")), i), p))).into_any_element());
+            }
+            if !rows.skipped.is_empty() {
+                sections.push(Section::new(format!("Left out ({})", rows.skipped.len())).children(rows.skipped.iter().cloned().map(Muted::new)).into_any_element());
+            }
+            div()
+                .w(px(440.))
+                .flex_none()
+                .h_full()
+                .border_l_1()
+                .border_color(border)
+                .child(SidePanel::new("structure-panel", "NWB structure", move |_, cx| vm.update(cx, |vm, cx| vm.set_structure_open(false, cx))).child(Muted::new("Click a row to open its item.")).children(sections))
+        });
+
+        h_flex()
+            .size_full()
+            .child(column)
+            .children(panel)
             .into_any_element()
     }
 }

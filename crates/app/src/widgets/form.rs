@@ -1,6 +1,5 @@
-//! Form pieces: a card, a labelled row that shows its issues (red outline + message), a choice
-//! card (one option with what it means), a dropdown of fixed options, and a text input with
-//! suggestions (type anything or pick).
+//! Form pieces: a card, a labelled row that shows its issues (red outline + message), a dropdown
+//! of fixed options, and a text input with suggestions (type anything or pick).
 
 use std::rc::Rc;
 
@@ -9,10 +8,9 @@ use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::menu::{DropdownMenu as _, PopupMenuItem};
 use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, IconName, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
-    div, px, AnyElement, App, ElementId, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement, RenderOnce, SharedString,
-    StatefulInteractiveElement as _, Styled as _, Window,
+    div, px, AnyElement, App, ElementId, Entity, FontWeight, IntoElement, ParentElement, RenderOnce, SharedString,
+    Styled as _, Window,
 };
 
 /// A bordered panel with a title.
@@ -79,11 +77,19 @@ pub struct FormRow {
     help: Option<SharedString>,
     control: AnyElement,
     issues: Vec<(bool, String)>,
+    /// The outline hugs a fixed-width control instead of spanning the row.
+    compact: bool,
 }
 
 impl FormRow {
     pub fn new(label: impl Into<SharedString>, control: impl IntoElement) -> Self {
-        Self { label: label.into(), required: false, help: None, control: control.into_any_element(), issues: Vec::new() }
+        Self { label: label.into(), required: false, help: None, control: control.into_any_element(), issues: Vec::new(), compact: false }
+    }
+
+    /// For controls narrower than the row (date picker, zone list, age).
+    pub fn compact(mut self) -> Self {
+        self.compact = true;
+        self
     }
 
     pub fn required(mut self, required: bool) -> Self {
@@ -120,63 +126,12 @@ impl RenderOnce for FormRow {
                     .child(self.label)
                     .when(self.required, |this| this.child(div().text_color(danger).child("*"))),
             )
-            .child(div().w_full().rounded_md().when_some(ring, |this, c| this.border_2().border_color(c)).child(self.control))
+            .map(|this| {
+                let outlined = div().rounded_md().when_some(ring, |this, c| this.border_2().border_color(c)).child(self.control);
+                if self.compact { this.child(h_flex().child(outlined)) } else { this.child(outlined.w_full()) }
+            })
             .children(self.issues.into_iter().map(move |(error, m)| div().text_xs().text_color(if error { danger } else { warning }).child(m)))
             .children(self.help.map(|h| div().text_xs().text_color(muted).child(h)))
-    }
-}
-
-type OnClick = Rc<dyn Fn(&mut Window, &mut App)>;
-
-/// One option of a choice: a title, what choosing it means, selected or not.
-#[derive(IntoElement)]
-pub struct Choice {
-    id: ElementId,
-    title: SharedString,
-    description: SharedString,
-    selected: bool,
-    on_click: OnClick,
-}
-
-impl Choice {
-    pub fn new(id: impl Into<ElementId>, title: impl Into<SharedString>, description: impl Into<SharedString>, selected: bool, on_click: impl Fn(&mut Window, &mut App) + 'static) -> Self {
-        Self { id: id.into(), title: title.into(), description: description.into(), selected, on_click: Rc::new(on_click) }
-    }
-}
-
-impl RenderOnce for Choice {
-    fn render(self, _: &mut Window, cx: &mut App) -> impl IntoElement {
-        let t = cx.theme();
-        let on_click = self.on_click;
-        h_flex()
-            .id(self.id)
-            .test_support()
-            .items_start()
-            .gap_2()
-            .p_2()
-            .rounded_md()
-            .border_1()
-            .cursor_pointer()
-            .border_color(if self.selected { t.primary } else { t.border })
-            .when(self.selected, |this| this.bg(t.accent))
-            .hover(|s| s.bg(t.accent))
-            .on_click(move |_, window, cx| on_click(window, cx))
-            .child(
-                div()
-                    .mt(px(3.))
-                    .size_3()
-                    .flex_none()
-                    .rounded_full()
-                    .border_2()
-                    .border_color(if self.selected { t.primary } else { t.muted_foreground })
-                    .when(self.selected, |this| this.bg(t.primary)),
-            )
-            .child(
-                v_flex()
-                    .gap_0p5()
-                    .child(div().text_sm().font_weight(FontWeight::MEDIUM).child(self.title))
-                    .child(div().text_xs().text_color(t.muted_foreground).child(self.description)),
-            )
     }
 }
 

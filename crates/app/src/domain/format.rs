@@ -19,6 +19,42 @@ pub fn short_path(path: &Path, home: Option<&Path>, max: usize) -> String {
     format!("{}…{}", chars[..head].iter().collect::<String>(), chars[chars.len() - tail..].iter().collect::<String>())
 }
 
+/// An issue message for people: metadata-file paths (`session.timezone`,
+/// `streams.MonA.conversion`) become the names the app shows next to the fields.
+pub fn plain_issue(message: &str) -> String {
+    const NAMES: [(&str, &str); 14] = [
+        ("session.description", "the description"),
+        ("session.timezone", "the time zone"),
+        ("session.start_time", "the start time"),
+        ("session.identifier", "the identifier"),
+        ("session.experimenters", "the experimenters"),
+        ("session.lab", "the lab"),
+        ("session.institution", "the institution"),
+        ("session.keywords", "the keywords"),
+        ("subject.species", "the species"),
+        ("subject.age", "the age"),
+        ("subject.sex", "the sex"),
+        ("subject.id", "the subject id"),
+        ("subject.strain", "the strain"),
+        ("subject.description", "the subject description"),
+    ];
+    let mut out = message.to_string();
+    for (path, name) in NAMES {
+        out = out.replace(path, name);
+    }
+    // streams.<name>.conversion / .unit
+    for (suffix, name) in [(".conversion", "scale factor"), (".unit", "unit")] {
+        while let Some(start) = out.find("streams.") {
+            let rest = &out[start + 8..];
+            let Some(end) = rest.find(suffix) else { break };
+            let stream = rest[..end].to_string();
+            out.replace_range(start..start + 8 + end + suffix.len(), &format!("the {name} of {stream}"));
+        }
+    }
+    let mut chars = out.chars();
+    chars.next().map_or_else(String::new, |c| c.to_uppercase().collect::<String>() + chars.as_str())
+}
+
 pub fn home() -> Option<std::path::PathBuf> {
     std::env::var_os("HOME").map(Into::into)
 }
@@ -224,5 +260,15 @@ mod tests {
         assert_eq!(parse_age("P3M"), Some((3, AgeUnit::Months)));
         assert_eq!(parse_age("P1Y2M"), None);
         assert_eq!(format_age(12, AgeUnit::Weeks), "P12W");
+    }
+
+    #[test]
+    fn test_plain_issue() {
+        assert_eq!(super::plain_issue("session.description is required (a sentence describing the session)"), "The description is required (a sentence describing the session)");
+        assert_eq!(
+            super::plain_issue("the recorded start time 2025-02-26T15:25:56 has no time zone: set session.timezone (e.g. -05:00) or session.start_time"),
+            "The recorded start time 2025-02-26T15:25:56 has no time zone: set the time zone (e.g. -05:00) or the start time"
+        );
+        assert_eq!(super::plain_issue("Set streams.MonA.conversion (and unit)"), "Set the scale factor of MonA (and unit)");
     }
 }

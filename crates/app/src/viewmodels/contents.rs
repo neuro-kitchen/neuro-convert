@@ -14,7 +14,7 @@ use super::nav::{NavEvent, NavVm};
 use crate::domain::format::{home, short_path, LOCATIONS, UNITS};
 use crate::domain::AppEvent;
 use crate::store::Store;
-use crate::widgets::{duration, Inclusion};
+use crate::widgets::{duration, Inclusion, TableData};
 
 /// What the card shows.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -89,6 +89,9 @@ pub struct StreamCard {
     pub shared_with: Vec<String>,
     /// The reader could not tell the physical scale.
     pub scale_note: Option<String>,
+    /// Automatic made it an other signal, but it looks like electrode data (many channels at a
+    /// spike-band rate): the user should decide. Never applied on its own.
+    pub looks_electrical: bool,
 }
 
 pub fn stream_card(s: &Session, meta: &MetadataFile, name: &str) -> Option<StreamCard> {
@@ -112,14 +115,16 @@ pub fn stream_card(s: &Session, meta: &MetadataFile, name: &str) -> Option<Strea
         .as_ref()
         .map(|g| s.recordings.iter().map(|r| r.info().name.clone()).filter(|n| n != name && meta.stream(n).electrode_group.as_ref() == Some(g)).collect())
         .unwrap_or_default();
+    let neural = match spec.kind {
+        Some(k) => k == StreamType::Electrical,
+        None => complete,
+    };
     Some(StreamCard {
+        looks_electrical: spec.kind.is_none() && !neural && i.channel_count() >= 4 && i.sample_rate >= 10_000.0,
         name: name.to_string(),
         summary: format!("{} ch · {} Hz · {} · {}", i.channel_count(), group_digits(i.sample_rate), duration(i.duration()), i.unit),
         kind: spec.kind,
-        neural: match spec.kind {
-            Some(k) => k == StreamType::Electrical,
-            None => complete,
-        },
+        neural,
         from_recording: complete.then(|| format!("{} electrodes from the recording ({})", rows.len(), reader_groups.join(", "))),
         group,
         groups,
@@ -143,6 +148,132 @@ fn group_digits(rate: f64) -> String {
         out.push(c);
     }
     out
+}
+
+/// The line above the selected item: what it is, its name, facts, and where it goes in the NWB
+/// file.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Heading {
+    pub kind: &'static str,
+    pub name: String,
+    pub facts: String,
+    /// `→ ElectricalSeries`, `→ events table`, `left out`.
+    pub dest: String,
+}
+
+pub fn heading(s: &Session, meta: &MetadataFile, sel: &Selection) -> Option<Heading> {
+    let left_out = |kind, name: &str, dest: String| if meta.included(kind, name) { format!("→ {dest}") } else { "left out".to_string() };
+    Some(match sel {
+        Selection::Stream(n) => {
+            let card = stream_card(s, meta, n)?;
+            let dest = if card.neural { "ElectricalSeries" } else { "TimeSeries" };
+            Heading { kind: "Stream", name: n.clone(), facts: card.summary, dest: left_out(ItemKind::Stream, n, dest.into()) }
+        }
+        Selection::Event(n) => {
+            let e = s.events.iter().find(|e| &e.name == n)?;
+            let dest = if e.channels > 1 { format!("TimeSeries ({} values per event)", e.channels) } else { "events table".into() };
+            let facts = format!("{} events{}", e.len(), if e.offsets.is_some() { " with durations" } else { "" });
+            Heading { kind: "Events", name: n.clone(), facts, dest: left_out(ItemKind::Event, n, dest) }
+        }
+        Selection::Table(n) => {
+            let t = s.tables.iter().find(|t| &t.name == n)?;
+            Heading { kind: "Table", name: n.clone(), facts: format!("{} rows × {} columns", t.rows.len(), t.columns.len()), dest: left_out(ItemKind::Table, n, "analysis table".into()) }
+        }
+        Selection::Snippet(n) => {
+            let sn = s.snippets.iter().find(|x| &x.name == n)?;
+            let mut channels: Vec<u16> = sn.channels.clone();
+            channels.sort_unstable();
+            channels.dedup();
+            let facts = format!("{} waveforms × {} samples on {} channels", sn.len(), sn.samples_per_snippet, channels.len());
+            Heading { kind: "Snippets", name: n.clone(), facts, dest: left_out(ItemKind::Snippet, n, "SpikeEventSeries per channel".into()) }
+        }
+        Selection::Group(n) => {
+            let count = s.electrodes.iter().filter(|e| &e.group == n).count();
+            Heading { kind: "Electrode group", name: n.clone(), facts: format!("{count} electrodes"), dest: "→ electrodes table".into() }
+        }
+        Selection::None => return None,
+    })
+}
+
+fn num(v: f64) -> String {
+    if v.is_finite() && v == v.trunc() && v.abs() < 1e15 { format!("{v:.0}") } else { format!("{v}") }
+}
+
+/// The rows of a selected event series, table, snippet store or electrode group.
+pub fn table_data(s: &Session, sel: &Selection) -> Option<TableData> {
+    let col = |n: &str, numeric: bool| (n.to_string(), numeric);
+    match sel {
+        Selection::Event(n) => {
+            let e = s.events.iter().find(|e| &e.name == n)?;
+            let mut columns = vec![col("#", true), col("Onset (s)", true)];
+            if e.offsets.is_some() {
+                columns.extend([col("Offset (s)", true), col("Duration (s)", true)]);
+            }
+            let c = e.channels.max(1);
+            if c == 1 {
+                columns.push(col("Value", true));
+            } else {
+                columns.extend((1..=c).map(|i| col(&format!("Value {i}"), true)));
+            }
+            let labelled = e.labels.iter().any(|l| !l.is_empty());
+            if labelled {
+                columns.push(col("Label", false));
+            }
+            let rows = (0..e.len())
+                .map(|i| {
+                    let mut r = vec![(i + 1).to_string(), format!("{:.6}", e.onsets[i])];
+                    if let Some(off) = &e.offsets {
+                        r.extend([format!("{:.6}", off[i]), format!("{:.6}", off[i] - e.onsets[i])]);
+                    }
+                    r.extend(e.values.get(i * c..(i + 1) * c).unwrap_or(&[]).iter().map(|v| num(*v)));
+                    if labelled {
+                        r.push(e.labels.get(i).cloned().unwrap_or_default());
+                    }
+                    r
+                })
+                .collect();
+            Some(TableData { columns, rows })
+        }
+        Selection::Table(n) => {
+            let t = s.tables.iter().find(|t| &t.name == n)?;
+            let columns = (0..t.columns.len())
+                .map(|i| (t.columns[i].clone(), !t.rows.is_empty() && t.rows.iter().all(|r| r.get(i).is_some_and(|c| c.trim().parse::<f64>().is_ok()))))
+                .collect();
+            Some(TableData { columns, rows: t.rows.clone() })
+        }
+        Selection::Snippet(n) => {
+            let sn = s.snippets.iter().find(|x| &x.name == n)?;
+            let mut channels: Vec<u16> = sn.channels.clone();
+            channels.sort_unstable();
+            channels.dedup();
+            let rows = channels
+                .iter()
+                .map(|&c| {
+                    let mine: Vec<usize> = (0..sn.len()).filter(|&i| sn.channels[i] == c).collect();
+                    let mut codes: Vec<u16> = mine.iter().filter_map(|&i| sn.sort_codes.get(i).copied()).filter(|&x| x != 0).collect();
+                    codes.sort_unstable();
+                    codes.dedup();
+                    let electrode = sn.electrodes.get(&c).and_then(|&e| s.electrodes.get(e)).map_or_else(|| "—".to_string(), |e| e.name.clone());
+                    vec![c.to_string(), mine.len().to_string(), if codes.is_empty() { "unsorted".into() } else { codes.iter().map(u16::to_string).collect::<Vec<_>>().join(", ") }, electrode]
+                })
+                .collect();
+            Some(TableData { columns: vec![col("Channel", true), col("Waveforms", true), col("Sort codes", false), col("Electrode", false)], rows })
+        }
+        Selection::Group(n) => {
+            let pos = |e: &nc_convert::core::Electrode, k: usize| e.position_um.map_or_else(String::new, |p| num(p[k] as f64));
+            let rows = s
+                .electrodes
+                .iter()
+                .filter(|e| &e.group == n)
+                .map(|e| {
+                    let channels = e.channels.iter().map(|c| format!("{} {}", c.recording, c.channel + 1)).collect::<Vec<_>>().join(", ");
+                    vec![e.name.clone(), channels, pos(e, 0), pos(e, 1), pos(e, 2), e.impedance_ohms.map_or_else(String::new, |z| format!("{:.1}", z / 1000.0))]
+                })
+                .collect();
+            Some(TableData { columns: vec![col("Electrode", false), col("Channels", false), col("x (µm)", true), col("y (µm)", true), col("z (µm)", true), col("Impedance (kΩ)", true)], rows })
+        }
+        _ => None,
+    }
 }
 
 /// The tree. Ids: `f/<folder>`, `s/` streams, `e/` events, `n/` snippets, `t/` tables,
@@ -487,11 +618,26 @@ impl ContentsVm {
         store.update(cx, |s, cx| s.apply(cx, |ws| ws.set_included(kind, &names, include)));
     }
 
+    pub fn heading(&self, cx: &App) -> Option<Heading> {
+        let ws = &self.store.read(cx).ws;
+        heading(ws.session()?, &ws.meta, &self.selected)
+    }
+
+    pub fn table_data(&self, cx: &App) -> Option<TableData> {
+        table_data(self.store.read(cx).ws.session()?, &self.selected)
+    }
+
     /// The signal-kind tag of a stream row (`neural` / `other`).
     pub fn stream_tag(&self, name: &str, cx: &App) -> Option<&'static str> {
         let ws = &self.store.read(cx).ws;
         let card = stream_card(ws.session()?, &ws.meta, name)?;
-        Some(if card.neural { "neural" } else { "other" })
+        Some(if card.neural {
+            "neural"
+        } else if card.looks_electrical {
+            "other?"
+        } else {
+            "other"
+        })
     }
 
     /// Issues about the selected item.
@@ -592,5 +738,26 @@ mod tests {
         assert_eq!((card.group.as_deref(), card.groups.clone(), card.shared_with.clone()), (Some("A"), vec!["A".to_string()], vec!["Temp".to_string()]));
         assert_eq!(merge(&["b".into()], ["a".into(), "b".into()]), vec!["b", "a"]);
         assert_eq!(group_digits(24414.0625), "24 414");
+    }
+
+    #[test]
+    fn test_heading_and_table_data() {
+        let mut ws = workspace(&scratch("contents-heading"));
+        open(&mut ws, "session.fake");
+        let s = ws.session().unwrap();
+        let h = heading(s, &ws.meta, &Selection::Stream("Wav1".into())).unwrap();
+        assert_eq!((h.kind, h.facts.as_str(), h.dest.as_str()), ("Stream", "2 ch · 1 000 Hz · 2.00 s · V", "→ TimeSeries"));
+        let tick = Selection::Event(s.events[0].name.clone());
+        let h = heading(s, &ws.meta, &tick).unwrap();
+        assert_eq!(h.dest, "→ events table");
+        let t = table_data(s, &tick).unwrap();
+        assert_eq!(t.columns[..2], [("#".to_string(), true), ("Onset (s)".to_string(), true)]);
+        assert_eq!(t.rows.len(), s.events[0].len());
+        assert_eq!(t.rows[0][0], "1");
+        assert!(table_data(s, &Selection::Stream("Wav1".into())).is_none(), "streams show the preview");
+
+        let mut meta = ws.meta.clone();
+        meta.set_included(ItemKind::Stream, "Wav1", false);
+        assert_eq!(heading(s, &meta, &Selection::Stream("Wav1".into())).unwrap().dest, "left out");
     }
 }

@@ -10,7 +10,7 @@ name = "neuro-convert-app"
 path = "src/main.rs"
 
 [dependencies]
-nc-convert = { workspace = true, features = ["tdt", "spikeglx", "nwb"] }
+nc-convert = { workspace = true, features = ["tdt", "spikeglx", "intan", "openephys", "nwb"] }
 gpui-kit.workspace = true
 async-channel.workspace = true
 chrono.workspace = true

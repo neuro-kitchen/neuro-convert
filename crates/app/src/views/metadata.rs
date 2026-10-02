@@ -55,16 +55,18 @@ impl Render for MetadataView {
             let vm = handle.clone();
             Button::new("start-reset").ghost().xsmall().label("Use the recorded time").on_click(move |_, window, cx| vm.update(cx, |vm, cx| vm.reset_start(window, cx)))
         });
-        let start = FormRow::new("Start time", h_flex().gap_2().child(div().w(px(260.)).child(DatePicker::new(&vm.start).small())).children(reset))
+        let start = FormRow::new("Start time", h_flex().gap_2().child(div().w(px(300.)).child(DatePicker::new(&vm.start).small())).children(reset))
             .help(recorded.map_or_else(|| "Not recorded: set it".to_string(), |r| format!("Recorded: {r} (local time of the recording system)")))
-            .issues(vm.issues("session.start_time", cx));
+            .issues(vm.issues("session.start_time", cx))
+            .compact();
         let zone = FormRow::new(
             "Time zone",
             div().w(px(420.)).child(Select::new(&vm.zone).id("field-Timezone").small().placeholder("Where (when) the recording was made").search_placeholder("Search offset or city")),
         )
         .required(true)
         .help("Recording systems store local time; NWB needs its offset from UTC")
-        .issues(vm.issues("session.timezone", cx));
+        .issues(vm.issues("session.timezone", cx))
+        .compact();
 
         // Sex and age
         let sex = vm.sex(cx);
@@ -88,7 +90,8 @@ impl Render for MetadataView {
         }
         let age = FormRow::new("Age", h_flex().gap_2().child(div().w(px(120.)).child(Input::new(&vm.age).id("field-Age").small())).child(unit_select))
             .help("At the time of the session")
-            .issues(age_issues);
+            .issues(age_issues)
+            .compact();
 
         let dandi = vm.dandi(cx);
         let dandi_switch = {
@@ -116,11 +119,12 @@ impl Render for MetadataView {
             .child(self.field(Field::Species, cx))
             .child(FormRow::new("Sex", sex_buttons).issues(sex_issues))
             .child(age);
-        let mut body = v_flex().gap_4().max_w(px(860.)).child(session).child(subject).child(more_toggle);
+        let mut body = v_flex().gap_4().w_full().max_w(px(860.)).child(session).child(subject).child(more_toggle);
         if more_open {
             let fields: Vec<AnyElement> = Field::MORE.iter().map(|f| self.field(*f, cx)).collect();
             body = body.child(Card::new().title("More details").children(fields));
         }
-        v_flex().id("metadata-form").test_support().size_full().p_6().child(body).overflow_y_scrollbar().into_any_element()
+        // Centered column on wide windows
+        v_flex().id("metadata-form").test_support().size_full().p_6().items_center().child(body).overflow_y_scrollbar().into_any_element()
     }
 }

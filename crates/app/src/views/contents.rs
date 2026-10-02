@@ -1,35 +1,92 @@
-//! ② Contents: the tree on the left; on the right a card for the selected item (for a stream:
-//! what kind of signal, its electrodes, details under "More") and the stream's preview.
+//! ② Contents: three regions. Left, the tree of the recording (a panel that can be hidden);
+//! middle, the data of the selected item (a stream's preview, the rows of events, tables,
+//! snippets and electrode groups); right, the item's settings (a panel that can be hidden). A
+//! heading above says what is shown and where it goes in the NWB file.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::Input;
 use gpui_kit::component::list::ListItem;
-use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::component::table::{DataTable, TableState};
+use gpui_kit::component::{h_resizable, resizable_panel};
 use gpui_kit::component::switch::Switch;
 use gpui_kit::component::tag::Tag;
 use gpui_kit::component::tree::tree;
-use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Sizable as _};
+use gpui_kit::component::{h_flex, v_flex, ActiveTheme as _, Icon, IconName, Selectable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::TestSupportExt as _;
-use gpui_kit::{div, px, AnyElement, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window};
+use gpui_kit::{div, px, AnyElement, AppContext as _, Context, Entity, FontWeight, InteractiveElement as _, IntoElement, ParentElement as _, Render, SharedString, Styled as _, Subscription, Window};
 use nc_convert::core::{ItemKind, StreamType};
 
 use super::preview::PreviewView;
+use crate::settings::Panels;
 use crate::viewmodels::contents::{ContentsVm, Selection, StreamCard};
-use crate::widgets::{Card, Choice, FormRow, IncludeToggle, IssueList, IssueRow, MenuSelect, Muted, SuggestInput};
+use crate::widgets::{FormRow, IncludeToggle, IssueList, IssueRow, MenuSelect, Muted, Section, SidePanel, SuggestInput, TextTable};
 
 pub struct ContentsView {
     vm: Entity<ContentsVm>,
     preview: Entity<PreviewView>,
-    /// "More" of the stream card is open.
-    more: bool,
+    /// The rows shown for the selected item (rebuilt when the selection changes).
+    table: Option<(Selection, Entity<TableState<TextTable>>)>,
     _vm: Subscription,
 }
 
 impl ContentsView {
     pub fn new(vm: Entity<ContentsVm>, preview: Entity<PreviewView>, cx: &mut Context<Self>) -> Self {
         let sub = cx.observe(&vm, |_, _, cx| cx.notify());
-        Self { vm, preview, more: false, _vm: sub }
+        Self { vm, preview, table: None, _vm: sub }
+    }
+
+    fn panels(&self, cx: &Context<Self>) -> Panels {
+        self.vm.read(cx).store().read(cx).ws.settings.panels
+    }
+
+    fn set_panels(&self, cx: &mut gpui_kit::App, f: impl FnOnce(&mut Panels)) {
+        let store = self.vm.read(cx).store().clone();
+        store.update(cx, |s, cx| {
+            let mut p = s.ws.settings.panels;
+            f(&mut p);
+            s.ws.set_panels(p);
+            cx.notify();
+        });
+    }
+
+    /// What is shown, its facts and where it goes; with the panel toggles at both ends.
+    fn heading(&self, panels: Panels, cx: &mut Context<Self>) -> AnyElement {
+        let t = cx.theme();
+        let (muted, border) = (t.muted_foreground, t.border);
+        let toggle = |id: &'static str, icon: IconName, open: bool, tip: &'static str, cx: &mut Context<Self>, f: fn(&mut Panels)| {
+            let b = Button::new(id).ghost().small().icon(icon).tooltip(tip);
+            let b = if open { b.selected(true) } else { b };
+            b.on_click(cx.listener(move |this, _, _, cx| {
+                this.set_panels(cx, f);
+                cx.notify();
+            }))
+        };
+        let title = self.vm.read(cx).heading(cx).map(|h| {
+            h_flex()
+                .gap_2()
+                .min_w_0()
+                .flex_1()
+                .items_baseline()
+                .child(div().text_xs().text_color(muted).child(h.kind.to_uppercase()))
+                .child(div().text_base().font_weight(FontWeight::SEMIBOLD).child(h.name))
+                .child(div().text_sm().text_color(muted).child(h.facts))
+                .child(if h.dest == "left out" { Tag::secondary().small().child(h.dest) } else { Tag::info().small().child(h.dest) })
+        });
+        h_flex()
+            .id("contents-heading")
+            .test_support()
+            .flex_none()
+            .gap_2()
+            .px_2()
+            .py_1p5()
+            .border_b_1()
+            .border_color(border)
+            .child(toggle("toggle-tree", IconName::PanelLeft, panels.tree, "Show or hide the recording's items", cx, |p| p.tree = !p.tree))
+            .children(title)
+            .child(div().flex_1())
+            .child(toggle("toggle-inspector", IconName::PanelRight, panels.inspector, "Show or hide the settings of the selected item", cx, |p| p.inspector = !p.inspector))
+            .into_any_element()
     }
 
     fn tree_panel(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -61,14 +118,9 @@ impl ContentsView {
                     .children(row.map(|r| div().text_xs().text_color(muted).child(r.detail))),
             )
         });
-        v_flex()
-            .w(px(340.))
-            .flex_none()
-            .h_full()
-            .gap_2()
-            .p_3()
-            .border_r_1()
-            .border_color(cx.theme().border)
+        let view = cx.entity();
+        SidePanel::new("tree-panel", "Recording", move |_, cx| view.update(cx, |this, cx| this.set_panels(cx, |p| p.tree = false)))
+            .no_scroll()
             .child(div().text_xs().text_color(cx.theme().muted_foreground).child(self.vm.read(cx).source_line(cx)))
             .child(Muted::new("Tick what goes into the NWB file; select an item to set it up."))
             .child(div().flex_1().min_h_0().child(rows))
@@ -99,34 +151,39 @@ impl ContentsView {
         out
     }
 
-    fn stream_card(&mut self, card: StreamCard, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
-        let _ = window;
+    /// The selected stream's settings (inspector): include, signal kind, electrodes, details.
+    fn stream_settings(&mut self, card: StreamCard, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let vm = self.vm.clone();
         let included = self.vm.read(cx).store().read(cx).ws.included(ItemKind::Stream, &card.name);
         let include = {
             let (store, name) = (self.vm.read(cx).store().clone(), card.name.clone());
-            Switch::new("stream-include").checked(included).label("Include").on_click(move |on, _, cx| ContentsVm::set_included(&store, ItemKind::Stream, vec![name.clone()], *on, cx))
+            Switch::new("stream-include").checked(included).label("Include in the NWB file").on_click(move |on, _, cx| ContentsVm::set_included(&store, ItemKind::Stream, vec![name.clone()], *on, cx))
         };
-        let kind = |id: &'static str, title: &'static str, description: String, value: Option<StreamType>| {
+        // Signal kind: a segmented choice and one line saying what the chosen one means
+        let kind = |id: &'static str, label: &'static str, value: Option<StreamType>| {
             let vm = vm.clone();
-            Choice::new(id, title, description, card.kind == value, move |window, cx| vm.update(cx, |vm, cx| vm.set_kind(value, window, cx)))
+            let b = Button::new(id).small().label(label);
+            let b = if card.kind == value { b.primary() } else { b.outline() };
+            b.on_click(move |_, window, cx| vm.update(cx, |vm, cx| vm.set_kind(value, window, cx)))
         };
-        let automatic = format!("Neural when the recording supplies electrodes{}", if card.from_recording.is_some() { " — it does: neural" } else { " — it does not: other signal" });
+        let meaning = match card.kind {
+            None if card.from_recording.is_some() => "Automatic: the recording supplies electrodes, so it is stored as a neural recording (ElectricalSeries).",
+            None => "Automatic: the recording supplies no electrodes, so it is stored as an other signal (TimeSeries).",
+            Some(StreamType::Electrical) => "Voltage from electrodes (neural, EMG) → ElectricalSeries; needs an electrode group.",
+            Some(StreamType::Timeseries) => "EMG envelope, temperature, stimulus monitor, sync… → TimeSeries.",
+        };
         let kinds = v_flex()
             .gap_1p5()
-            .child(kind("kind-auto", "Automatic", automatic, None))
-            .child(kind("kind-neural", "Neural recording", "Voltage from electrodes in tissue → stored as ElectricalSeries; needs electrodes".into(), Some(StreamType::Electrical)))
-            .child(kind("kind-other", "Other signal", "EMG, temperature, stimulus monitor, sync… → stored as TimeSeries".into(), Some(StreamType::Timeseries)));
+            .child(h_flex().gap_1().child(kind("kind-auto", "Automatic", None)).child(kind("kind-neural", "Neural", Some(StreamType::Electrical))).child(kind("kind-other", "Other", Some(StreamType::Timeseries))))
+            .child(Muted::new(meaning))
+            .when(card.looks_electrical, |c| c.child(Muted::new("Many channels at a high rate: this looks like electrode data. If it is, choose Neural and pick an electrode group.")));
 
-        let mut card_el = Card::new()
-            .title(card.name.clone())
-            .aside(h_flex().gap_2().child(include))
-            .child(Muted::new(card.summary.clone()))
-            .children(self.issues(cx))
-            .child(FormRow::new("What is this signal?", kinds));
+        let mut out = vec![include.into_any_element()];
+        out.extend(self.issues(cx));
+        out.push(FormRow::new("What is this signal?", kinds).into_any_element());
 
         if card.neural {
-            let mut electrodes = v_flex().gap_3();
+            let mut electrodes = Section::new("Electrodes");
             match &card.from_recording {
                 Some(text) => electrodes = electrodes.child(Muted::new(format!("{text}. Positions and device come from the recording."))),
                 None => {
@@ -154,85 +211,102 @@ impl ContentsView {
                 }
                 electrodes = electrodes.children(self.group_fields(cx));
             }
-            card_el = card_el.child(Card::new().title("Electrodes").child(electrodes));
+            out.push(electrodes.into_any_element());
         }
 
-        // Details, closed by default
-        let more = self.more;
-        let toggle = Button::new("stream-more").ghost().small().icon(if more { IconName::ChevronDown } else { IconName::ChevronRight }).label("More: name, unit, scale").on_click(cx.listener(|this, _, _, cx| {
-            this.more = !this.more;
-            cx.notify();
-        }));
-        card_el = card_el.child(toggle);
-        if more {
-            let m = self.vm.read(cx);
-            let f = &m.fields;
-            let mut details = v_flex().gap_3().pl_4();
-            if let Some(s) = &f.name {
-                details = details.child(FormRow::new("Name in the NWB file", Input::new(s).small()).help(format!("Empty: {}", card.name)));
-            }
-            if let Some(s) = &f.unit {
-                details = details.child(FormRow::new("Unit", SuggestInput::replacing("stream-unit", s, m.unit_suggestions())).help("Physical unit after scaling (electrical series are stored in volts)"));
-            }
-            if let Some(s) = &f.conversion {
-                let mut help = "Multiplies stored values to get the unit. Empty: values are already in the unit".to_string();
-                if let Some(note) = &card.scale_note {
-                    help = format!("The recording does not give it ({note}). {help}");
-                }
-                let errors = m.errors.iter().map(|e| (true, e.clone())).collect();
-                details = details.child(FormRow::new("Scale factor", Input::new(s).small()).help(help).issues(errors));
-            }
-            card_el = card_el.child(details);
+        let m = self.vm.read(cx);
+        let f = &m.fields;
+        let mut details = Section::new("Details");
+        if let Some(s) = &f.name {
+            details = details.child(FormRow::new("Name in the NWB file", Input::new(s).small()).help(format!("Empty: {}", card.name)));
         }
-        card_el.into_any_element()
+        if let Some(s) = &f.unit {
+            details = details.child(FormRow::new("Unit", SuggestInput::replacing("stream-unit", s, m.unit_suggestions())).help("Physical unit after scaling (electrical series are stored in volts)"));
+        }
+        if let Some(s) = &f.conversion {
+            let mut help = "Multiplies stored values to get the unit. Empty: values are already in the unit".to_string();
+            if let Some(note) = &card.scale_note {
+                help = format!("The recording does not give it ({note}). {help}");
+            }
+            let errors = m.errors.iter().map(|e| (true, e.clone())).collect();
+            details = details.child(FormRow::new("Scale factor", Input::new(s).small()).help(help).issues(errors));
+        }
+        out.push(details.into_any_element());
+        out
     }
 
-    fn item_card(&self, title: String, what: &str, kind: ItemKind, cx: &mut Context<Self>) -> AnyElement {
+    /// Settings of an event series, table or snippet store (inspector).
+    fn item_settings(&self, title: String, what: &str, kind: ItemKind, cx: &mut Context<Self>) -> Vec<AnyElement> {
         let issues = self.issues(cx);
         let m = self.vm.read(cx);
         let included = m.store().read(cx).ws.included(kind, &title);
         let (store, name) = (m.store().clone(), title.clone());
-        let include = Switch::new("item-include").checked(included).label("Include").on_click(move |on, _, cx| ContentsVm::set_included(&store, kind, vec![name.clone()], *on, cx));
+        let include = Switch::new("item-include").checked(included).label("Include in the NWB file").on_click(move |on, _, cx| ContentsVm::set_included(&store, kind, vec![name.clone()], *on, cx));
         let f = &m.fields;
-        let mut card = Card::new().title(title.clone()).aside(include).child(Muted::new(what.to_string())).children(issues);
+        let mut out = vec![include.into_any_element(), Muted::new(what.to_string()).into_any_element()];
+        out.extend(issues);
         if let Some(s) = &f.name {
-            card = card.child(FormRow::new("Name in the NWB file", Input::new(s).small()).help(format!("Empty: {title}")));
+            out.push(FormRow::new("Name in the NWB file", Input::new(s).small()).help(format!("Empty: {title}")).into_any_element());
         }
         if let Some(s) = &f.conversion {
-            card = card.child(FormRow::new("Scale factor to volts", Input::new(s).small()));
+            out.push(FormRow::new("Scale factor to volts", Input::new(s).small()).into_any_element());
         }
-        card.into_any_element()
+        out
+    }
+
+    /// The rows of the selected item, in a table kept while the selection stays.
+    fn data_table(&mut self, selected: &Selection, window: &mut Window, cx: &mut Context<Self>) -> AnyElement {
+        if self.table.as_ref().is_none_or(|(s, _)| s != selected) {
+            self.table = self.vm.read(cx).table_data(cx).map(|data| (selected.clone(), cx.new(|cx| TableState::new(TextTable::new(data), window, cx))));
+        }
+        match &self.table {
+            Some((_, state)) if state.read(cx).delegate().data().rows.is_empty() => Muted::new("No rows.").into_any_element(),
+            Some((_, state)) => div().id("item-table").test_support().size_full().child(DataTable::new(state).stripe(true).bordered(true).scrollbar_visible(true, true)).into_any_element(),
+            None => Muted::new("Nothing to show.").into_any_element(),
+        }
     }
 }
 
 impl Render for ContentsView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.vm.read(cx).selected.clone();
-        let body: Vec<AnyElement> = match selected {
-            Selection::Stream(_) => {
-                let card = self.vm.read(cx).card(cx);
-                let mut v = Vec::new();
-                if let Some(card) = card {
-                    v.push(self.stream_card(card, window, cx));
-                }
-                v.push(Card::new().title("Preview").child(div().h(px(460.)).child(self.preview.clone())).into_any_element());
+        let panels = self.panels(cx);
+
+        let main: AnyElement = match &selected {
+            Selection::Stream(_) => div().size_full().p_2().child(self.preview.clone()).into_any_element(),
+            Selection::None => div().p_4().child(Muted::new("Select an item in the tree.")).into_any_element(),
+            other => div().size_full().p_2().child(self.data_table(other, window, cx)).into_any_element(),
+        };
+
+        let settings: Vec<AnyElement> = match selected.clone() {
+            Selection::Stream(_) => match self.vm.read(cx).card(cx) {
+                Some(card) => self.stream_settings(card, cx),
+                None => Vec::new(),
+            },
+            Selection::Event(n) => self.item_settings(n, "Event times (and values) → NWB events table, or a TimeSeries for several values per event", ItemKind::Event, cx),
+            Selection::Table(n) => self.item_settings(n, "A table of the recording → NWB analysis table", ItemKind::Table, cx),
+            Selection::Snippet(n) => self.item_settings(n, "Spike waveforms → SpikeEventSeries (needs an electrode group)", ItemKind::Snippet, cx),
+            Selection::Group(_) => {
+                let mut v = vec![Muted::new("Where these electrodes are and what recorded them.").into_any_element()];
+                v.extend(self.issues(cx));
+                v.extend(self.group_fields(cx));
                 v
-            }
-            Selection::Event(n) => vec![self.item_card(n, "Event times (and values) → NWB events table or scalar series", ItemKind::Event, cx)],
-            Selection::Table(n) => vec![self.item_card(n, "A table of the recording → NWB analysis table", ItemKind::Table, cx)],
-            Selection::Snippet(n) => vec![self.item_card(n, "Spike waveforms → SpikeEventSeries (needs an electrode group)", ItemKind::Snippet, cx)],
-            Selection::Group(g) => {
-                let fields = self.group_fields(cx);
-                vec![Card::new().title(format!("Electrode group {g}")).child(Muted::new("Where these electrodes are and what recorded them.")).children(self.issues(cx)).children(fields).into_any_element()]
             }
             Selection::None => vec![Muted::new("Select an item in the tree.").into_any_element()],
         };
-        h_flex()
+        let view = cx.entity();
+        let inspector = SidePanel::new("inspector-panel", "Settings", move |_, cx| view.update(cx, |this, cx| this.set_panels(cx, |p| p.inspector = false))).children(settings);
+
+        let regions = h_resizable("contents-regions")
+            .child(resizable_panel().visible(panels.tree).size(px(320.)).size_range(px(220.)..px(560.)).child(self.tree_panel(cx)))
+            .child(resizable_panel().child(v_flex().id("contents-card").size_full().min_w_0().child(main)))
+            .child(resizable_panel().visible(panels.inspector).size(px(380.)).size_range(px(280.)..px(620.)).child(inspector));
+
+        v_flex()
             .id("contents-step")
             .test_support()
             .size_full()
-            .items_start()
-            .child(self.tree_panel(cx))
-            .child(v_flex().id("contents-card").flex_1().min_w_0().h_full().p_4().gap_4().children(body).overflow_y_scrollbar())
+            .child(self.heading(panels, cx))
+            .child(div().flex_1().min_h_0().child(regions))
     }
 }

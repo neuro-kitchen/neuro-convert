@@ -18,22 +18,29 @@ each format expects (from the readers), recent recordings, and, for a TDT tank o
 several SpikeGLX runs, the recordings to choose from.
 
 ### ② Contents
-Left: everything in the recording, with a checkbox per item (unticked items are left out; the
-choice is saved with the metadata). A ⚠ marks items with an issue; streams are tagged *neural* or
-*other*. Select an item to set it up on the right. For a stream:
-- **What is this signal?** *Neural recording* (stored as `ElectricalSeries`, needs electrodes),
-  *Other signal* (EMG, temperature, stimulus…, stored as `TimeSeries`), or *Automatic* (neural when
-  the recording supplies electrodes, e.g. a Neuropixels probe).
-- **Electrodes** (neural only): choose an electrode group or **New group…**, then its location
-  (suggestions: common brain areas and what you typed before), description and device. Every
-  channel becomes one electrode of the group. Groups shared by several streams say so.
-  Picking probe designs and headstage wiring is planned separately.
-- **More**: name in the NWB file, unit, and scale factor (needed when the recording does not give
-  a physical scale).
-- **Preview** below (see Preview).
+A heading says what is selected, its facts and where it goes (e.g. *Stream HDEG · 32 ch · 24 414 Hz
+· 47 min 12 s · V → TimeSeries*). Below it three regions; the side panels are hidden and shown with
+the buttons at both ends of the heading (or their ×), and the choice is remembered:
+- **Left panel, Recording:** everything in the recording, with a checkbox per item (unticked items
+  are left out; the choice is saved with the metadata). A ⚠ marks items with an issue; streams are
+  tagged *neural*, *other*, or *other?* (many channels at a high rate: probably electrode data,
+  decide on the right).
+- **Middle:** the data. A stream shows its preview (see Preview); events, tables, snippets and
+  electrode groups show their rows in a table (click a header to sort; numbers sort as numbers).
+- **Right panel, Settings** of the selected item. For a stream:
+  - **What is this signal?** *Automatic* / *Neural* / *Other*, with one line on what the choice
+    means: *Neural* is stored as `ElectricalSeries` and needs electrodes; *Other* (EMG envelope,
+    temperature, stimulus…) as `TimeSeries`; *Automatic* is neural when the recording supplies
+    electrodes (e.g. a Neuropixels probe).
+  - **Electrodes** (neural only): choose an electrode group or **New group…**, then its location
+    (suggestions: common brain areas and what you typed before), description and device. Every
+    channel becomes one electrode of the group. Groups shared by several streams say so. Picking
+    probe designs and headstage wiring is planned separately.
+  - **Details**: name in the NWB file, unit, and scale factor (needed when the recording does not
+    give a physical scale).
 
 ### ③ Metadata
-Session: description, start time (date-time picker, preset to the recorded time; "Use the
+The form is a centered column. Session: description, start time (date and time, preset to the recorded time; "Use the
 recorded time" undoes a change) and **time zone** (searchable list of UTC offsets with places;
 recording systems store local time). Subject: id, species (suggestions with common names), sex,
 age (number + days / weeks / months / years). **More details**: experiment, experimenters, lab,
@@ -48,30 +55,46 @@ recording. Comments in a loaded YAML are not kept when saving.
 
 ### ④ Review & convert
 What will be written (summary), the remaining issues with links to fix them, the output folder
-(`.nwb.zarr`, default next to the recording) and **Advanced** (compression, chunks, threads). The
+(`.nwb.zarr`, default next to the recording) and **Advanced** (compression, chunks, check after
+writing, threads). The
 only **Convert** button (Ctrl+Enter) is here; when disabled it says what to fix. Progress shows
 samples copied, speed and time left; **Cancel** (Esc) stops and removes the partial output. Every
-conversion is verified and leaves `<output>.report.json`. **Show NWB structure** lists every path
-written. **Copy diagnostics** puts versions, warnings, issues and the outcome on the clipboard.
+conversion is verified and leaves `<output>.report.json`: the structure always, and the content
+compared with the source per **Check after writing** — *Sampled* (default: first, last and random
+blocks, seconds), *Full* (everything plus the source files' own checksums, about as long as
+writing) or *Off*. **NWB structure** (button on the summary) opens a panel on the right with every
+path written and where it comes from; click a row to open its item in Contents. The output is
+the store's name (editable) in the folder shown under it (**Choose…** to change both). **Copy diagnostics** puts versions, warnings, issues and the outcome on the clipboard.
 
 ## Preview
-Dropdowns choose the **stream**, the **channels** (pages of 16, or one electrode group when a
-stream spans several) and **markers** (an event series drawn as vertical lines). **Earlier /
-Later**, zoom − / +, and **Gain**. Mouse wheel: next / previous channels; Ctrl+wheel: zoom;
-Shift+wheel: pan. The bar under the time axis is the whole recording: click to jump. All channels
-share one scale, shown by the scale bar at the right (its value is under the plot); **Fit each
-channel** scales each to its own peak instead. Each lane draws, per pixel column, the smallest and
-largest sample, so short spikes stay visible at any zoom. For probes, the map on the right shows
-the sites, the visible ones highlighted.
+Dropdowns choose the **stream**, the **channels** (all, or one electrode group when a stream spans
+several), how many **lanes** are shown at once (4–64) and **markers** (an event series drawn as
+vertical lines); zoom − / + and **Gain**.
+
+Moving around, without buttons:
+- **Time:** drag the traces, swipe sideways on a trackpad, or Shift+wheel; the view follows
+  continuously (three windows around it are read ahead).
+- **Zoom:** Ctrl+wheel (or pinch) zooms around the pointer.
+- **Channels:** the wheel scrolls through the channels (three per notch); the bar right of the
+  traces shows where you are and can be dragged.
+- **Overview** (the bar under the time axis is the whole recording): drag the highlighted window
+  to move, drag its edges to zoom; pressing outside it moves it there.
+- **Keys** (after clicking the traces): ← / → (Shift: half a window), + / −, ↑ / ↓ one channel,
+  Page Up / Down a screen of channels, Home / End.
+
+All channels share one scale, shown by the scale bar at the right (its value is under the plot);
+**Fit each channel** scales each to its own peak instead. Each lane draws, per pixel column, the
+smallest and largest sample, so short spikes stay visible at any zoom. For probes, the map on the
+right shows the sites, the visible ones highlighted.
 
 ## Settings
 `~/.config/neuro-convert/settings.json` (or `$XDG_CONFIG_HOME`): theme, compression, chunking,
-reserved threads, recent files, the DANDI switch and remembered values. `NC_APP_LOG=1` prints
+check after writing, reserved threads, open panels, recent files, the DANDI switch and remembered values. `NC_APP_LOG=1` prints
 status messages to stderr.
 
 ## Limits
 - One recording at a time (no batch queue yet).
 - Probe designs, headstage wiring and per-channel electrode maps: planned
   (`.tasks/10-01-2026/02-nc-app/12-probe-library.md`).
-- Data-integrity verification (re-reading and comparing samples) is planned:
-  `.tasks/10-01-2026/01-data-integrity-verification.md`.
+- A source checksum mismatch (Full check) stops the conversion; converting such a file anyway is
+  CLI-only for now (`--skip-source-check`).

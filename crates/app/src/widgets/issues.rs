@@ -76,7 +76,7 @@ impl RenderOnce for IssueList {
                 .items_start()
                 .text_sm()
                 .child(div().flex_none().w_16().text_color(color).child(tag))
-                .child(v_flex().flex_1().min_w_0().gap_0p5().child(div().w_full().child(r.text)).children(link))
+                .child(v_flex().flex_1().min_w_0().gap_0p5().child(div().w_full().child(crate::domain::format::plain_issue(&r.text))).children(link.map(|l| h_flex().child(l))))
         }))
     }
 }

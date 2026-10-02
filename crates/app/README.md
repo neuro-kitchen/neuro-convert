@@ -59,10 +59,13 @@ src/viewmodels/    one per screen; subscribes to the events it shows; pure displ
   contents.rs      tree, issue flags, stream card (signal kind, electrode group, details)
   metadata.rs      session / subject: date-time picker, zone list, age, sex, suggestions
   plan.rs          NWB structure rows and summary       convert.rs  output, options, progress
-  preview.rs       stream / channel sets / time window / gain / markers; sampler requests
-src/widgets/       RenderOnce pieces: Card, FormRow (issue outline), Choice, MenuSelect,
-                   SuggestInput, IssueList (fix links), IncludeToggle, ProgressCard, Traces, ProbeMap
-src/views/         render only: source, contents (+ preview), metadata, review
+  preview.rs       stream / channel sets / lanes / time window / gain / markers; fetches three
+                   windows ahead and re-slices them (`resample`) while panning
+src/widgets/       RenderOnce pieces: Card, FormRow (issue outline), MenuSelect, SuggestInput,
+                   IssueList (fix links), IncludeToggle, ProgressCard, Traces, ProbeMap,
+                   SidePanel (title + close), TextTable (sortable table delegate)
+src/views/         render only: source, contents (tree | data | settings panels), preview (drag,
+                   wheel, keys, overview window), metadata, review (+ NWB structure panel)
 src/app.rs         root: title bar, toolbar, step bar, current step, footer, status bar; UI tests
 ```
 
