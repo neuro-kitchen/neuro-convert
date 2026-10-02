@@ -19,6 +19,8 @@ nc-tdt = { path = "crates/readers/tdt" }
 nc-spikeglx = { path = "crates/readers/spikeglx" }
 nc-intan = { path = "crates/readers/intan" }
 nc-openephys = { path = "crates/readers/openephys" }
+nc-blackrock = { path = "crates/readers/blackrock" }
+nc-neuralynx = { path = "crates/readers/neuralynx" }
 nc-nwb = { path = "crates/nwb" }
 nc-convert = { path = "crates/convert", default-features = false }
 # External
@@ -38,6 +40,11 @@ thiserror = "2.0.21"
 uuid = { version = "1.26.1", features = ["v4"] }
 xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
 zarrs = { version = "0.23.14", default-features = false, features = ["filesystem", "gzip"] }
+# NWB on HDF5 (optional): hdf5-metno links HDF5 (feature `static` builds it from source)
+hdf5-metno = "0.15.0"
+hdf5-metno-sys = "0.12.4"
+ndarray = "0.17.2"
+flate2 = "1.1.10"
 zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # Dev builds (`cargo run`, `cargo test`) stay debuggable but must not be slow: dependencies (GPUI,
