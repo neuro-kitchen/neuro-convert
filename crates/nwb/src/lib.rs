@@ -5,6 +5,7 @@
 //! data in parallel chunks. Nothing here knows which reader produced the session.
 
 pub mod backend;
+pub mod integrity;
 pub mod mapping;
 pub mod schema;
 pub mod types;
@@ -15,6 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub use integrity::{Digests, VerifyLevel};
 pub use mapping::{resolve, NwbPlan};
 
 use backend::zarr::ZarrBackend;
@@ -88,11 +90,17 @@ pub struct NwbOptions {
     /// Set to `true` from any thread to stop the write; it then returns [`Error::Cancelled`] and
     /// the store is left incomplete (no `/specifications`).
     pub cancel: Option<Arc<AtomicBool>>,
+    /// How much sample data is read back and compared with the source after writing
+    /// ([`integrity::verify`]; run by `nc_convert::Job`, not by [`write`]).
+    pub verify: VerifyLevel,
+    /// At [`VerifyLevel::Full`], hash source files whose format records a checksum (SpikeGLX
+    /// `fileSHA1`) before writing, and refuse to convert on a mismatch (`nc_convert::Job`).
+    pub source_checksums: bool,
 }
 
 impl Default for NwbOptions {
     fn default() -> Self {
-        Self { gzip: Some(1), chunks: ChunkPolicy::Seconds(1.0), threads: available_threads(0), overwrite: false, cancel: None }
+        Self { gzip: Some(1), chunks: ChunkPolicy::Seconds(1.0), threads: available_threads(0), overwrite: false, cancel: None, verify: VerifyLevel::Full, source_checksums: true }
     }
 }
 
