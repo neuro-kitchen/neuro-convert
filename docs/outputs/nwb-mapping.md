@@ -2,7 +2,24 @@
 
 Writer: `crates/nwb` (`nc-nwb`). Target: NWB core 2.11.0 (hdmf-common 1.10.0, hdmf-experimental
 0.6.0), stored as a Zarr v3 store in the layout hdmf-zarr 0.14 writes, so pynwb / hdmf-zarr (≥ 0.14)
-and DANDI read it. The schema is cached under `/specifications` (vendored in `crates/nwb/specs/`).
+and DANDI read it — or, with the `hdf5` feature and a `.nwb` output name, as one HDF5 file in the
+layout pynwb writes. The schema is cached under `/specifications` (vendored in `crates/nwb/specs/`).
+
+## Storage backends (`backend/`)
+The NWB types write through one `Backend` trait (groups, attributes, typed datasets, row
+streaming) in hdmf-zarr's conventions; `backend::create` picks the backend from the output name.
+- **Zarr** (`zarr.rs`): attributes as written, `_DTYPE` / `_ARRAY_DIMENSIONS` on every array,
+  `vlen-utf8` strings, gzip per chunk.
+- **HDF5** (`hdf5.rs`, feature `hdf5` / `hdf5-static`): `_LINKS` → soft links; `_REFERENCE`
+  attribute values, the root's `.specloc` and `object_reference` string columns (electrodes
+  `group`) → HDF5 object references, created in `Backend::finish` once every target exists;
+  variable-length UTF-8 strings; `VectorIndex` columns uint64. Continuous data is chunked along
+  time; each whole chunk is deflate-compressed in the writer thread and stored with
+  `H5Dwrite_chunk`, so compression runs in parallel (HDF5 itself is serialized by a global lock).
+  The integrity check reads chunks straight from the file (HDF5 gives their addresses) and
+  inflates them in parallel. Checked 2026-10-02: pynwb 4.2 reads every group (`pynwb.validate`:
+  no errors; nwbinspector 0.7.2: only DANDI metadata suggestions); IBL 3A file (1.16 G samples):
+  int16 identical to the `.bin`, written in 7–13 s, 25 s with full verification (Zarr: 18 s).
 
 ## Planning: `nc_nwb::plan(session, metadata, id)`
 1. `MetadataFile::apply` merges the metadata file's electrode declarations into the session:

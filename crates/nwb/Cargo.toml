@@ -1,6 +1,6 @@
 [package]
 name = "nc-nwb"
-description = "neuro-convert NWB 2.11 writer (Zarr v3 store in hdmf-zarr's layout)"
+description = "neuro-convert NWB 2.11 writer (Zarr v3 store in hdmf-zarr's layout; HDF5 with the `hdf5` feature)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -13,3 +13,13 @@ serde_json.workspace = true
 uuid.workspace = true
 xxhash-rust.workspace = true
 zarrs.workspace = true
+hdf5-metno = { workspace = true, optional = true }
+hdf5-metno-sys = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+flate2 = { workspace = true, optional = true }
+
+[features]
+# NWB on HDF5 (`.nwb`), linking the system's HDF5 library (e.g. `dnf install hdf5-devel`)
+hdf5 = ["dep:hdf5-metno", "dep:hdf5-metno-sys", "dep:ndarray", "dep:flate2"]
+# The same, with HDF5 built from source (needs cmake and a C compiler; no system package)
+hdf5-static = ["hdf5", "hdf5-metno/static", "hdf5-metno/zlib"]

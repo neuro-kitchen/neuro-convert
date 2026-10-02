@@ -28,18 +28,19 @@ fn f32_matrix(b: &dyn Backend, path: &str, rows: usize, cols: usize, values: &[f
 pub fn write(b: &dyn Backend, plan: &SnippetPlan, sn: &SnippetSeries) -> Result<()> {
     let w = sn.samples_per_snippet;
     for &(channel, row) in &plan.rows {
-        let events: Vec<usize> = (0..sn.len()).filter(|&i| sn.channels[i] == channel).collect();
+        let events = sn.on_channel(channel);
         let path = format!("/acquisition/{}_ch{channel}", plan.name);
         let description = format!("{} (channel {channel})", plan.description);
         b.group(&path, typed_with("core", "SpikeEventSeries", &[("description", json!(description)), ("comments", json!("no comments"))]))?;
 
-        // [num_events, num_channels = 1, num_samples]: the channel axis matches `electrodes`
-        let data: Vec<f32> = events.iter().flat_map(|&i| sn.data[i * w..(i + 1) * w].iter().copied()).collect();
+        // [num_events, num_channels = 1, num_samples]: the channel axis matches `electrodes`;
+        // waveforms are read from the source a block at a time
         let data_attrs = attrs(&[("unit", json!("volts")), ("conversion", json!(plan.conversion)), ("offset", json!(0.0)), ("resolution", json!(-1.0))]);
         let sink = b.stream(&format!("{path}/data"), &[events.len() as u64, 1, w as u64], events.len().max(1) as u64, SampleType::F32, &["num_events", "num_channels", "num_samples"], data_attrs)?;
-        if !events.is_empty() {
-            sink.write_rows(0, events.len() as u64, &data.iter().flat_map(|v| v.to_le_bytes()).collect::<Vec<u8>>())?;
-        }
+        sn.for_each_block(&events, |first, block| {
+            let bytes: Vec<u8> = block.iter().flat_map(|v| v.to_le_bytes()).collect();
+            sink.write_rows(first as u64, (block.len() / w.max(1)) as u64, &bytes)
+        })?;
 
         let times: Vec<f64> = events.iter().map(|&i| sn.timestamps[i]).collect();
         b.f64s(&format!("{path}/timestamps"), &times, &[times.len() as u64], &["num_times"], attrs(&[("interval", json!(1)), ("unit", json!("seconds"))]))?;
@@ -101,25 +102,36 @@ pub fn write_units(b: &dyn Backend, stores: &[(&SnippetPlan, &SnippetSeries)]) -
         spike_times.extend(t);
         spike_index.push(spike_times.len() as i64);
     }
-    b.f64s("/units/spike_times", &spike_times, &[spike_times.len() as u64], &["num_spikes"], column("the spike times for each unit in seconds"))?;
+    // Spike-time precision (an attribute of the column): one sample at the fastest snippet rate
+    let mut times_attrs = column("the spike times for each unit in seconds");
+    let rate = units.iter().map(|u| u.sn.sample_rate).fold(0.0, f64::max);
+    if rate > 0.0 {
+        times_attrs.insert("resolution".into(), json!(1.0 / rate));
+    }
+    b.f64s("/units/spike_times", &spike_times, &[spike_times.len() as u64], &["num_spikes"], times_attrs)?;
     let index = |target: &str, desc: &str| typed_with("hdmf-common", "VectorIndex", &[("description", json!(desc)), ("target", reference(target))]);
-    b.i64s("/units/spike_times_index", &spike_index, "num_rows", index("/units/spike_times", "Index for VectorData 'spike_times'"))?;
+    let spike_index: Vec<u64> = spike_index.into_iter().map(|v| v as u64).collect();
+    b.u64s("/units/spike_times_index", &spike_index, "num_rows", index("/units/spike_times", "Index for VectorData 'spike_times'"))?;
 
     let rows: Vec<i64> = units.iter().map(|u| u.row as i64).collect();
     let region = typed_with("hdmf-common", "DynamicTableRegion", &[("description", json!("electrode of each unit")), ("table", reference(TABLE_PATH))]);
     b.i64s("/units/electrodes", &rows, "num_electrodes", region)?;
     let electrode_index: Vec<i64> = (1..=n as i64).collect();
-    b.i64s("/units/electrodes_index", &electrode_index, "num_rows", index("/units/electrodes", "Index for VectorData 'electrodes'"))?;
+    let electrode_index: Vec<u64> = electrode_index.into_iter().map(|v| v as u64).collect();
+    b.u64s("/units/electrodes_index", &electrode_index, "num_rows", index("/units/electrodes", "Index for VectorData 'electrodes'"))?;
 
     if with_waveforms {
         let mut mean = vec![0.0f32; n * w];
         for (k, u) in units.iter().enumerate() {
             let mut acc = vec![0.0f64; w];
-            for &i in &u.events {
-                for (a, &v) in acc.iter_mut().zip(&u.sn.data[i * w..(i + 1) * w]) {
-                    *a += v as f64;
+            u.sn.for_each_block(&u.events, |_, block| {
+                for wave in block.chunks_exact(w.max(1)) {
+                    for (a, &v) in acc.iter_mut().zip(wave) {
+                        *a += v as f64;
+                    }
                 }
-            }
+                Ok(())
+            })?;
             // Mean in volts (the Units waveform columns carry no conversion)
             let scale = u.plan.conversion / u.events.len().max(1) as f64;
             for (m, a) in mean[k * w..(k + 1) * w].iter_mut().zip(acc) {

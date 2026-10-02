@@ -84,6 +84,10 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Value>) -> Result<()
 }
 
 pub fn validate(path: &Path) -> Result<Vec<Issue>> {
+    #[cfg(feature = "hdf5")]
+    if crate::backend::Format::of(path) == crate::backend::Format::Hdf5 {
+        return crate::backend::hdf5::validate(path);
+    }
     let s = Store::open(path)?;
     let mut issues = Vec::new();
     let mut err = |m: String| issues.push(Issue::error(m));
