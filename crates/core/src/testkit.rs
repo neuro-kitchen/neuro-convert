@@ -126,6 +126,9 @@ mod tests {
         fn name(&self) -> &'static str {
             "fixture"
         }
+        fn version(&self) -> &'static str {
+            "0.0.0"
+        }
         fn description(&self) -> &'static str {
             "in-memory test reader"
         }

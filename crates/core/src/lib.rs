@@ -14,6 +14,15 @@
 //! Writers read typed fields only; `metadata` maps on recordings and sessions are reader extras
 //! for reports.
 
+/// This crate's version (`nc-core`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
 pub mod apply;
 pub mod electrodes;
 pub mod events;
@@ -41,7 +50,7 @@ pub use metadata_file::{ElectrodeGroupSpec, ImpedanceSpec, ItemKind, ItemSpec, M
 pub use nc_base::{Error, MemoryOrder, Result, SampleType};
 pub use options::OpenOptions;
 pub use provenance::{Checksum, Provenance, SourceFile};
-pub use reader::{Detection, Reader};
+pub use reader::{Detection, Maturity, Reader};
 pub use recording::{check_read, Calibration, ChannelInfo, Recording, RecordingInfo, SignalKind};
 pub use session::Session;
 pub use snippets::{MemoryWaveforms, SnippetSeries, Waveforms, SNIPPET_BLOCK};

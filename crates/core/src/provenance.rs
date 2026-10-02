@@ -10,7 +10,8 @@ pub struct Provenance {
     /// Detected format version (e.g. `Synapse 53575`).
     pub version: Option<String>,
     pub files: Vec<SourceFile>,
-    /// `neuro-convert <version>`.
+    /// The reader that read it and its version, `<name> <version>` (e.g. `blackrock 0.1.0`); set
+    /// by `nc_convert::Registry::open`.
     pub reader: String,
     /// Recoverable problems met while reading (damaged index, missing files, …).
     pub warnings: Vec<String>,
