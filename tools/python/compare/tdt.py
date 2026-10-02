@@ -1,41 +1,26 @@
-"""Compare neuro-convert's TDT reader with TDT's own Python reader (`tdt.read_block`).
+"""TDT: neuro-convert's reader against TDT's own Python reader (`tdt.read_block`), from the
+reader's output (`inspect --json`): for every store the stream rate, channels, sample count and
+first samples; epoc onsets, offsets and values; scalar values; snip counts, times, channels, sort
+codes and first waveform values. Path: a block folder."""
 
-Usage:
-    cargo build --release
-    uv run --no-project --with tdt --with numpy tools/python/compare_tdt.py <block> [<block> ...]
-
-Run from the workspace root (uses target/release/neuro-convert).
-
-For every store: stream rate, channels, sample count and first samples; epoc onsets, offsets
-and values; scalar values; snip counts, times, channels, sort codes and first waveform values.
-Exits non-zero on any mismatch.
-"""
-
-import json
-import subprocess
-import sys
 import warnings
+from pathlib import Path
 
 import numpy as np
 import tdt
 
+from .common import Problems, close, inspect_json
+
+REQUIRES = ["tdt"]
 warnings.simplefilter("ignore")
-BIN = "target/release/neuro-convert"
 
 
-def close(a, b, tol=1e-6):
-    a, b = np.asarray(a, dtype=float).ravel(), np.asarray(b, dtype=float).ravel()
-    return a.shape == b.shape and np.allclose(a, b, rtol=1e-5, atol=tol, equal_nan=True)
-
-
-def compare(block: str) -> list[str]:
-    ours = json.loads(subprocess.check_output([BIN, "inspect", "--json", block]))
+def compare(path: Path, opts) -> list[str]:
+    block = str(path)
+    ours = inspect_json(path)
     ref = tdt.read_block(block)
-    problems = []
-
-    def check(ok, what):
-        if not ok:
-            problems.append(what)
+    problems = Problems()
+    check = problems.check
 
     for r in ours["recordings"]:
         key = tdt.fix_var_name(r["name"])
@@ -88,8 +73,3 @@ def compare(block: str) -> list[str]:
     for p in problems:
         print(f"  ✗ {p}")
     return problems
-
-
-if __name__ == "__main__":
-    failed = sum(len(compare(b)) for b in sys.argv[1:])
-    sys.exit(1 if failed else 0)

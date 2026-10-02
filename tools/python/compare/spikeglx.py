@@ -1,24 +1,17 @@
-"""Compare neuro-convert's SpikeGLX reader with independent references.
+"""SpikeGLX: values against SpikeGLX's own conversion rule (readSGLX.py: `imAiRangeMax /
+imMaxInt` (512 when absent) / AP gain — `imChan0apGain` when present, else 80 for the NP2.0
+family, else the IMRO entry's AP gain) for channel 0 at `--at` seconds, and every electrode's
+position against probeinterface (identical geometry up to one constant origin offset per axis).
+Path: an `.ap.bin` file."""
 
-Usage (from the workspace root):
-    cargo build --release
-    uv run --no-project --with numpy --with probeinterface tools/python/compare_spikeglx.py <ap.bin> [--at 50]
-
-- Values: channel 0 at `--at` seconds, scaled to volts with SpikeGLX's own rule
-  (readSGLX.py: imAiRangeMax / imMaxInt (512 when absent) / AP gain from ~imroTbl).
-- Positions: every electrode against probeinterface.read_spikeglx.
-Exits non-zero on any mismatch.
-"""
-
-import json
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
 import probeinterface
 
-BIN = "target/release/neuro-convert"
+from .common import inspect_json
+
+REQUIRES = ["probeinterface"]
 
 
 def read_meta(path: Path) -> dict:
@@ -30,12 +23,13 @@ def read_meta(path: Path) -> dict:
     return meta
 
 
-def main(bin_path: Path, at: float) -> int:
+def compare(bin_path: Path, opts) -> list[str]:
+    at = opts.at
     meta_path = bin_path.with_suffix(".meta")
     meta = read_meta(meta_path)
     problems = []
 
-    ours = json.loads(subprocess.check_output([BIN, "inspect", "--json", "--read-sec", str(at), str(bin_path)]))
+    ours = inspect_json(bin_path, "--read-sec", str(at))
     ap = next(r for r in ours["recordings"] if r["name"].endswith(".ap"))
 
     # Reference values: SpikeGLX's conversion of channel 0
@@ -70,12 +64,4 @@ def main(bin_path: Path, at: float) -> int:
     else:
         print(f"position: {len(our_pos)} electrodes match probeinterface {probe.model_name!r} up to origin offset (x, y) = {offset.tolist()} µm (OK)")
 
-    for p in problems:
-        print("MISMATCH:", p)
-    return 1 if problems else 0
-
-
-if __name__ == "__main__":
-    args = sys.argv[1:]
-    at = float(args[args.index("--at") + 1]) if "--at" in args else 50.0
-    sys.exit(main(Path(args[0]), at))
+    return problems
