@@ -1,43 +1,23 @@
-"""Compare neuro-convert's Neuralynx reader, through the whole pipeline, with neo's NeuralynxRawIO.
+"""Neuralynx: streams matched by channel names; per segment (neo) / part (here) every sample of
+every channel (volts) and its start time; every spike time and waveform per wire (in the file's
+wire order) and unit; every event time per (event id, TTL). neo reports the stated sample rate;
+neuro-convert stores the measured one (as neo uses for its own timing), so rates are reported, not
+compared. When neo refuses a folder (streams with different gaps) each `.ncs` file is compared on
+its own. Path: a session folder."""
 
-Usage (from the workspace root):
-    cargo build --release
-    uv run --no-project --with neo --with pynwb --with hdmf-zarr tools/python/compare_neuralynx.py <folder> [<folder> ...]
-
-Each session folder is converted to target/neuralynx-compare/ and read back with pynwb. Compared
-with neo: streams matched by their channel names; per segment (neo) / part (here) every sample of
-every channel (volts) and the start time; every spike time and waveform per wire and unit; every
-event time and label per (event id, TTL). Neo reports the stated sample rate; this reader stores
-the measured one (as neo uses for its own timing), so rates are reported, not compared.
-Exits non-zero on any mismatch.
-"""
-
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
-from hdmf_zarr import NWBZarrIO
 from neo.rawio import NeuralynxRawIO
 
-BIN = "target/release/neuro-convert"
-OUT = Path("target/neuralynx-compare")
+from .common import convert, nearest, open_nwb
+
+REQUIRES = ["neo"]
 
 
-def convert(folder: Path) -> Path:
-    OUT.mkdir(parents=True, exist_ok=True)
-    tag = folder.as_posix().strip("/").replace("/", "_")
-    meta = OUT / f"{tag}.yaml"
-    # Spike stores need an electrode group to be written: the reader's own electrodes are used
-    meta.write_text("session: { description: Neuralynx comparison, timezone: 'Z', start_time: '2020-01-01T00:00:00' }\n")
-    dest = OUT / f"{tag}.nwb.zarr"
-    subprocess.run([BIN, "convert", str(folder), "-m", str(meta), "-o", str(dest), "--overwrite", "--verify", "sampled"], check=True, stdout=subprocess.DEVNULL)
-    return dest
-
-
-def main(folder: Path, files: list[str] | None = None, dest: Path | None = None) -> list[str]:
+def compare(folder: Path, opts, files: list[str] | None = None, dest: Path | None = None) -> list[str]:
     problems = []
-    dest = dest or convert(folder)
+    dest = dest or convert(folder, opts.block, tag=folder.as_posix().strip("/"))
     try:
         neo = NeuralynxRawIO(dirname=str(folder), include_filenames=files) if files else NeuralynxRawIO(dirname=str(folder))
         neo.parse_header()
@@ -47,11 +27,10 @@ def main(folder: Path, files: list[str] | None = None, dest: Path | None = None)
         # neo refuses streams whose gaps differ: compare one .ncs file at a time
         print(f"{folder.name}: neo refuses the folder ({e}); comparing each .ncs file on its own")
         for f in sorted(p.name for p in folder.iterdir() if p.suffix.lower() == ".ncs"):
-            problems += main(folder, [f], dest)
+            problems += compare(folder, opts, [f], dest)
         return problems
     chans = neo.header["signal_channels"]
-    with NWBZarrIO(str(dest), mode="r") as io:
-        nwb = io.read()
+    with open_nwb(dest) as nwb:
         series = {k: v for k, v in nwb.acquisition.items() if hasattr(v, "rate") and v.rate}
         compared = 0
         for si, stream in enumerate(neo.header["signal_streams"]):
@@ -154,18 +133,17 @@ def main(folder: Path, files: list[str] | None = None, dest: Path | None = None)
             if ev is None or key not in ev:
                 problems.append(f"events {key}: missing here")
                 continue
-            mine = np.asarray(ev[key]["timestamp"][:])
-            if len(mine) != len(t) or not np.allclose(np.sort(mine), np.sort(t), atol=1e-9):
-                problems.append(f"events {key}: {len(mine)} here, {len(t)} in neo, or times differ")
+            mine = np.sort(np.asarray(ev[key]["timestamp"][:]))
+            # Every neo event must be here; neo drops events that fall between its segments (a
+            # known difference), so extra events here are fine only outside neo's segments
+            found = np.isclose(mine[nearest(mine, np.sort(t))], np.sort(t), atol=1e-9) if len(mine) else np.zeros(len(t), bool)
+            spans = [(neo.segment_t_start(0, s), neo.segment_t_stop(0, s)) for s in range(neo.segment_count(0))]
+            extra = [x for x in mine if not np.any(np.isclose(t, x, atol=1e-9))]
+            inside = [x for x in extra if any(a <= x <= b for a, b in spans)]
+            if not found.all() or inside:
+                problems.append(f"events {key}: {len(mine)} here, {len(t)} in neo; {int((~found).sum())} of neo's missing, {len(inside)} extra inside neo's segments")
+            elif extra:
+                print(f"  events {key}: {len(extra)} more here than in neo, all between neo's segments (neo drops them)")
             count += len(t)
         print(f"{folder.name}: {count} events compared")
     return problems
-
-
-if __name__ == "__main__":
-    all_problems = []
-    for arg in sys.argv[1:]:
-        all_problems += main(Path(arg))
-    for p in all_problems:
-        print("MISMATCH:", p)
-    sys.exit(1 if all_problems else 0)

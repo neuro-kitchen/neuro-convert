@@ -1,64 +1,31 @@
-"""Compare neuro-convert's legacy Open Ephys reader (.continuous / .events / .spikes), through the
-whole pipeline, with neo's OpenEphysRawIO.
+"""Open Ephys legacy format (.continuous / .events / .spikes): per acquisition start (neo's
+segment) every sample of every channel (volts), the TTL onsets, and every spike waveform and time,
+against neo's OpenEphysRawIO. neo's spike API returns nothing for legacy files (it compares the
+integer sorted_id with the string from the unit name), so its memory map of each `.spikes` file
+and its scaling are used. Path: a folder of `.continuous` files."""
 
-Usage (from the workspace root):
-    cargo build --release
-    uv run --no-project --with neo --with pynwb --with hdmf-zarr tools/python/compare_openephys_legacy.py <folder> [<folder> ...]
-
-Every acquisition start (neo: segment; neuro-convert: container `experiment<n>`) is converted to
-target/oe-legacy-compare/ (spike stores put on one electrode group so they are written), read back
-with pynwb and compared with neo: every sample of every channel (volts), the TTL onsets, and every
-spike waveform (volts) and time. Times are compared relative to the segment start. Exits non-zero
-on any mismatch.
-"""
-
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
-from hdmf_zarr import NWBZarrIO
 from neo.rawio import OpenEphysRawIO
 
-BIN = "target/release/neuro-convert"
-OUT = Path("target/oe-legacy-compare")
-TO_SI = {"uV": 1e-6, "mV": 1e-3, "V": 1.0, "": 1.0}
+from .common import TO_SI, containers, convert, open_nwb
+
+REQUIRES = ["neo"]
+# Spike stores are written only with an electrode group
+SPIKE_GROUP = "electrode_groups:\n  - { name: SpikeElectrode, description: spike electrode, location: unknown }\nsnippets:\n  '*': { electrode_group: SpikeElectrode }\n"
 
 
-def convert(path: Path, block: str) -> Path:
-    OUT.mkdir(parents=True, exist_ok=True)
-    tag = f"{path.name}_{block}".replace(" ", "_").replace("/", "_")
-    meta = OUT / f"{tag}.yaml"
-    meta.write_text(
-        "session: { description: legacy comparison, timezone: 'Z', start_time: '2020-01-01T00:00:00' }\n"
-        "electrode_groups:\n  - { name: SpikeElectrode, description: spike electrode, location: unknown }\n"
-        "snippets:\n  '*': { electrode_group: SpikeElectrode }\n"
-    )
-    dest = OUT / f"{tag}.nwb.zarr"
-    cmd = [BIN, "convert", str(path), "-m", str(meta), "-o", str(dest), "--overwrite", "--verify", "sampled", "--block", block]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-    return dest
-
-
-def blocks(path: Path) -> list[str]:
-    out = subprocess.run([BIN, "inspect", str(path)], capture_output=True, text=True)
-    text = out.stdout + out.stderr
-    if "--block <name>:" in text:
-        return [b.strip() for b in text.split("--block <name>:")[1].strip().splitlines()[0].split(",")]
-    return ["experiment1"]
-
-
-def main(folder: Path) -> list[str]:
+def compare(folder: Path, opts) -> list[str]:
     problems = []
     neo = OpenEphysRawIO(dirname=str(folder))
     neo.parse_header()
     chans = neo.header["signal_channels"]
-    for block in blocks(folder):
+    for block in [opts.block] if opts.block else (containers(folder) or ["experiment1"]):
         seg = int(block.rsplit("experiment", 1)[1]) - 1
-        dest = convert(folder, block)
+        dest = convert(folder, block, extra_yaml=SPIKE_GROUP)
         t_start = neo.get_signal_t_start(0, seg, 0)
-        with NWBZarrIO(str(dest), mode="r") as io:
-            nwb = io.read()
+        with open_nwb(dest) as nwb:
             series = {n: s for n, s in nwb.acquisition.items() if hasattr(s, "rate") and s.rate}
             # Samples: every channel, matched by name
             raw = neo.get_analogsignal_chunk(0, seg, stream_index=0)
@@ -127,12 +94,3 @@ def main(folder: Path) -> list[str]:
                         problems.append(f"{block} {key}: waveforms differ (max {np.max(np.abs(data - wf[:, c, :]))})")
                 print(f"{folder.name} {block}: spikes {name}: {len(data_spike)} × {nb_chan} channels compared")
     return problems
-
-
-if __name__ == "__main__":
-    all_problems = []
-    for arg in sys.argv[1:]:
-        all_problems += main(Path(arg))
-    for p in all_problems:
-        print("MISMATCH:", p)
-    sys.exit(1 if all_problems else 0)

@@ -1,53 +1,24 @@
-"""Compare neuro-convert's Open Ephys (binary) reader, through the whole pipeline, with neo.
+"""Open Ephys binary format: every value of every series against neo's OpenEphysBinaryRawIO
+(streams matched by values), relative start times (GUI ≥ 0.6: against the synchronized
+`timestamps.npy`, which neuro-convert uses and neo does not), and the number of TTL periods.
+Known difference: neo labels non-electrode channels without units, or with the file's "uV" (ADC),
+as microvolts; their `bit_volts` are volts (Open Ephys's documentation), which neuro-convert uses,
+so those match neo × 1e-6 ("V vs neo uV"). Path: a save folder; every recording is compared, or
+`--block` one."""
 
-Usage (from the workspace root):
-    cargo build --release
-    uv run --no-project --with neo --with pynwb --with hdmf-zarr tools/python/compare_openephys.py <folder> [--block <name>] ...
-
-Each recording is converted with `neuro-convert convert` to target/oe-compare/, read back with
-pynwb, and every value of every series is compared with neo's OpenEphysBinaryRawIO (streams
-matched by their channel names), plus the series start times relative to each other and the TTL
-onsets. Known difference: neo labels non-electrode channels without units (NI-DAQ inputs) or with
-the file's "uV" (ADC channels) as microvolts; their `bit_volts` are volts (Open Ephys's
-documentation), which neuro-convert uses — so those match neo × 1e-6 ("V vs neo uV").
-Exits non-zero on any other mismatch.
-"""
-
-import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
-from hdmf_zarr import NWBZarrIO
 from neo.rawio import OpenEphysBinaryRawIO
 
-BIN = "target/release/neuro-convert"
-OUT = Path("target/oe-compare")
-TO_SI = {"uV": 1e-6, "mV": 1e-3, "V": 1.0, "": 1.0}
+from .common import TO_SI, containers, convert, open_nwb, values
+
+REQUIRES = ["neo"]
 
 
-def convert(path: Path, block: str | None) -> Path:
-    OUT.mkdir(parents=True, exist_ok=True)
-    tag = (path.name + ("_" + block.replace("/", "_") if block else "")).replace(" ", "_")
-    meta = OUT / f"{tag}.yaml"
-    meta.write_text("session: { description: Open Ephys comparison, timezone: 'Z', start_time: '2020-01-01T00:00:00' }\n")
-    dest = OUT / f"{tag}.nwb.zarr"
-    cmd = [BIN, "convert", str(path), "-m", str(meta), "-o", str(dest), "--overwrite", "--verify", "sampled"]
-    if block:
-        cmd += ["--block", block]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-    return dest
-
-
-def main(args: list[str]) -> int:
+def compare(path: Path, opts) -> list[str]:
     problems = []
-    pairs = []
-    i = 0
-    while i < len(args):
-        block = args[i + 2] if i + 2 < len(args) and args[i + 1] == "--block" else None
-        pairs.append((Path(args[i]), block))
-        i += 3 if block else 1
-    for path, block in pairs:
+    for block in [opts.block] if opts.block else (containers(path) or [None]):
         print(f"=== {path} {block or ''}")
         dest = convert(path, block)
         neo_dir = path / block.split("/")[0] if block else path
@@ -61,21 +32,12 @@ def main(args: list[str]) -> int:
             cs = [c for c in chans if c["stream_id"] == st["id"]]
             neo_by_names[tuple(c["name"] for c in cs)] = (si, cs)
         starts = {}
-        with NWBZarrIO(str(dest), "r") as io:
-            nwb = io.read()
+        with open_nwb(dest) as nwb:
             for name, series in nwb.acquisition.items():
                 if not hasattr(series, "data") or not hasattr(series, "rate") or series.rate is None:
                     continue
-                data = np.asarray(series.data[:], dtype=np.float64)
-                if data.ndim == 1:
-                    data = data[:, None]
-                cc = getattr(series, "channel_conversion", None)
-                ours = data * series.conversion * (np.asarray(cc[:])[None, :] if cc is not None else 1.0)
-                if hasattr(series, "electrodes") and series.electrodes is not None:
-                    names = None
-                else:
-                    names = None
-                # channel names: from the conversion report is overkill; match by count and values instead
+                ours = values(series)
+                # Streams are matched by channel count and values (names differ between readers)
                 cand = [(k, v) for k, v in neo_by_names.items() if len(k) == ours.shape[1]]
                 best = None
                 for k, (si, cs) in cand:
@@ -129,10 +91,4 @@ def main(args: list[str]) -> int:
                 print(f"  TTL periods: ours {ours_total}, neo {neo_ttl}  {'ok' if ours_total == neo_ttl else 'MISMATCH'}")
                 if ours_total != neo_ttl:
                     problems.append(f"{path.name}: TTL counts differ")
-    for m in problems:
-        print("PROBLEM:", m)
-    return 1 if problems else 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))
+    return problems

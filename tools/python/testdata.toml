@@ -1,0 +1,373 @@
+# Test data for the reader comparisons (tools/python/compare) and the real-data tests.
+#
+# `gin` sets come from neo's public test data (gin.g-node.org/NeuralEnsemble/ephy_testing_data):
+# `python3 tools/python/fetch_gin.py --format <format>` (or `--all`) downloads them to
+# data/raw/<local>; `--check` compares local files with the digests below. `digest` = SHA-256 over
+# "<relative path>\0<sha256 of the file>\n" lines of every file, sorted by path.
+# Sets marked `source = "other"` are not on GIN (see `origin`); they are checked, never downloaded.
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/Noise4Sam_g0"
+local = "spikeglx/Noise4Sam_g0"
+files = 6
+bytes = 12153261
+digest = "d574e5510488d35160509db6700916f2e46ecc18d5a671abf962cb35d56205a7"
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/DigitalChannelTest_g0"
+local = "spikeglx/DigitalChannelTest_g0"
+files = 2
+bytes = 814531
+digest = "7ecd7319a573cf6eeebdbc8805dd918d50e809289657dbf1607c18b99ce14cba"
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/NP2_with_sync"
+local = "spikeglx/NP2_with_sync"
+files = 4
+bytes = 793579
+digest = "27a7675c2d46cf483091620fc4f0848b6016d6ae371d82873228d653badce8ee"
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/TEST_20210920_0_g0"
+local = "spikeglx/TEST_20210920_0_g0"
+files = 2
+bytes = 785528
+digest = "4075b6346e19db5cb59856663a16423fbd5910ed2cd3fae0bb0c0e528d39783c"
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/multi_trigger_multi_gate"
+local = "spikeglx/multi_trigger_multi_gate"
+files = 259
+bytes = 32978542
+digest = "ac3122550d098da80f59e82b1cf7a50db16bf2b969dca2b0c3e585250f78b58d"
+
+[[set]]
+format = "spikeglx"
+source = "gin"
+gin = "spikeglx/onebox"
+local = "spikeglx/onebox"
+files = 2
+bytes = 6538183
+digest = "8837888c2ccab0075c4331d6d89af8decfa9b2204615986599f5d8a13ad41e6b"
+
+[[set]]
+format = "intan"
+source = "gin"
+gin = "intan/intan_rhd_test_1.rhd"
+local = "intan/intan_rhd_test_1.rhd"
+files = 1
+bytes = 12202226
+digest = "8b01d62e836c335a3d4965e12287ab0c814c5a3f51b6e7afb9947962d1c6456c"
+
+[[set]]
+format = "intan"
+source = "gin"
+gin = "intan/intan_rhs_test_1.rhs"
+local = "intan/intan_rhs_test_1.rhs"
+files = 1
+bytes = 9224504
+digest = "6c5fbc92a2109cd86217953f5a5a05397c9009f2259739a6f779c929e94467f9"
+
+[[set]]
+format = "intan"
+source = "gin"
+gin = "intan/intan_fpc_test_231117_052630"
+local = "intan/intan_fpc_test_231117_052630"
+files = 75
+bytes = 3634633
+digest = "e5ff570f0ede11b9aad0f17f964657aabe7eaf7769b5fab72d53653d8fce7034"
+
+[[set]]
+format = "intan"
+source = "gin"
+gin = "intan/intan_fps_test_231117_052500"
+local = "intan/intan_fps_test_231117_052500"
+files = 7
+bytes = 3634636
+digest = "7909d947b68f84b6c3435af610f14639b44f2b38644232142dc1309083067766"
+
+[[set]]
+format = "intan"
+source = "gin"
+gin = "intan/intan_fps_rhs_test_240329_091536"
+local = "intan/intan_fps_rhs_test_240329_091536"
+files = 10
+bytes = 22821674
+digest = "13e18afc34b502c41cb9c1b02fe90d2c0b446d6dd5c418bfafb5b6e6b5756ac0"
+
+[[set]]
+format = "openephys"
+source = "gin"
+gin = "openephysbinary/v0.6.x_neuropixels_with_sync"
+local = "openephys/v0.6.x_neuropixels_with_sync"
+files = 27
+bytes = 6817227
+digest = "85cb1ea50d05e1bd07d0b45e0c6ab53424778011f8935393087a56c82b9bba5b"
+
+[[set]]
+format = "openephys"
+source = "gin"
+gin = "openephysbinary/v0.5.x_two_nodes"
+local = "openephys/v0.5.x_two_nodes"
+files = 48
+bytes = 5808768
+digest = "c404afc218243b2573c1d57bcf23b9619c3ac5e9a7bb40feb3f6d06c85038d56"
+
+[[set]]
+format = "openephys"
+source = "gin"
+gin = "openephysbinary/neural_and_non_neural_data_mixed"
+local = "openephys/neural_and_non_neural_data_mixed"
+files = 4
+bytes = 614248
+digest = "86d02cc8b62e6382967c76389bffb0b86a63ae9e01afd94b48a827342b8c2130"
+
+[[set]]
+format = "openephys-legacy"
+source = "gin"
+gin = "openephys/OpenEphys_SampleData_1"
+local = "openephys/OpenEphys_SampleData_1"
+files = 7
+bytes = 1831560
+digest = "22bb618c02bd31c0d06ca15f1cf78a99d92771c1616f25bb52d5c65195905f4d"
+
+[[set]]
+format = "openephys-legacy"
+source = "gin"
+gin = "openephys/OpenEphys_SampleData_2_(multiple_starts)"
+local = "openephys/OpenEphys_SampleData_2_(multiple_starts)"
+files = 14
+bytes = 1425164
+digest = "ab1dfb2e8d904a969433f17837d2ee3f5c1f57af477758fb2384ddb018f4d72f"
+
+[[set]]
+format = "openephys-legacy"
+source = "gin"
+gin = "openephys/OpenEphys_SampleData_3"
+local = "openephys/OpenEphys_SampleData_3"
+files = 16
+bytes = 20375317
+digest = "4366bb7d5c799b1e65bfc4e925697e2bdf46193685ebd15164fa375256bb61b0"
+
+[[set]]
+format = "openephys-legacy"
+source = "gin"
+gin = "openephys/openephys_rhythmdata_test_nodes"
+local = "openephys/openephys_rhythmdata_test_nodes"
+files = 82
+bytes = 8815238
+digest = "7c381f3803467a0dbc9d759794ad23ea78017099d8aa6f8c89aabfc80a83395e"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/FileSpec2.3001.nev"
+local = "blackrock/FileSpec2.3001.nev"
+files = 1
+bytes = 134552
+digest = "a7026763701d96aad15a850b2724d25d8f886ab4fbab0729b94cba43ee0c0c98"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/FileSpec2.3001.ns5"
+local = "blackrock/FileSpec2.3001.ns5"
+files = 1
+bytes = 18006983
+digest = "0790227077fa4b101f1874e19636419ffd0f3887da77765e9469e8d4e044b62c"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/blackrock_2_1"
+local = "blackrock/blackrock_2_1"
+files = 12
+bytes = 39599210
+digest = "02752d9fe3389ea7f1f4b10ddfe520a48876ad4816537416d9d45f760252d7d1"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/blackrock_3_0"
+local = "blackrock/blackrock_3_0"
+files = 3
+bytes = 4981129
+digest = "84f1089acaad3a7521c0d1ec79d8498f27dcbd016df31b58af7e5f8b3468b1d8"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/blackrock_3_0_ptp"
+local = "blackrock/blackrock_3_0_ptp"
+files = 7
+bytes = 18293869
+digest = "f0d4a42e30be0c941c741305d71501a56740b17460364179b1e8ad5edbab865e"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/blackrock_ptp_with_missing_samples"
+local = "blackrock/blackrock_ptp_with_missing_samples"
+files = 3
+bytes = 140632
+digest = "8b6ae5ab0c5e731b4eee2795d1d3f1c4f135e52350769dfc7059176491d1d7ad"
+
+[[set]]
+format = "blackrock"
+source = "gin"
+gin = "blackrock/segment"
+local = "blackrock/segment"
+files = 6
+bytes = 4016544
+digest = "9d9bd65c32b2f35f381344b3cb98808eb39cf5c7a374a791e60076e6849f4688"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/BML"
+local = "neuralynx/BML"
+files = 3
+bytes = 41540
+digest = "231931856f2507082dce27a81190dfa36c91bd5f133c3ed46429107ee4ee3bfe"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v1.1.0"
+local = "neuralynx/Cheetah_v1.1.0"
+files = 3
+bytes = 60282
+digest = "71bae999e74a11d8f485e9f078f0c9e8d245eb1108a1abeb74902fab23eedfd9"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v4.0.2"
+local = "neuralynx/Cheetah_v4.0.2"
+files = 3
+bytes = 53141
+digest = "4b0276aa831a25fc94994aabcc5ceecb4b5e310cf4240a0e1666311aa18e585a"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v5.4.0"
+local = "neuralynx/Cheetah_v5.4.0"
+files = 3
+bytes = 44393
+digest = "cb66a9ca3f5d13d0b40fd7b647da04a58267771574282d32b2f671b4632b886a"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v5.5.1"
+local = "neuralynx/Cheetah_v5.5.1"
+files = 13
+bytes = 10057439
+digest = "214bb22476af83bd63cd9a91e5394d049d8dd3bbb52e125c57178ba033892322"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v5.6.3"
+local = "neuralynx/Cheetah_v5.6.3"
+files = 14
+bytes = 26605318
+digest = "43d60f6faa33abb9bd53fbc2d5410ce06bd94d54a24259fff4d7e1794c3916ee"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v5.7.4"
+local = "neuralynx/Cheetah_v5.7.4"
+files = 13
+bytes = 18274549
+digest = "5fd50b9f19a9aa1f48f2b3bcbc4d7d52d7a37fbb8da05b4c13d8a16fc5492c6c"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v6.3.2"
+local = "neuralynx/Cheetah_v6.3.2"
+files = 3
+bytes = 7054443
+digest = "5ac25ef9c53fff9013bcaf0009e3ba560321b7bf14293ce5322fb1f8b0fc3ed1"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Cheetah_v6.4.1dev"
+local = "neuralynx/Cheetah_v6.4.1dev"
+files = 4
+bytes = 85104
+digest = "acb9d773428f4f61595a758c33aba31fab4d0555322c262cc6631b0d073b23ec"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Neuraview_v2"
+local = "neuralynx/Neuraview_v2"
+files = 2
+bytes = 23125
+digest = "e15166fc50ff59a9c94c91c2b2e9d18068459c42781ee87e73c4a3f4f505ae99"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/NoDateHeader"
+local = "neuralynx/NoDateHeader"
+files = 2
+bytes = 19413
+digest = "12ef366c4f5ebb5a2926b9d31a1b7547de8edebd1b98eae396898df93647c753"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/over_segmentation_example"
+local = "neuralynx/over_segmentation_example"
+files = 1
+bytes = 225184
+digest = "bea97338e534740c194fdc7c77f3b24e51e4e2ee9295de0b43a89accd4aa906d"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/Pegasus_v2.1.1"
+local = "neuralynx/Pegasus_v2.1.1"
+files = 1
+bytes = 19144
+digest = "537c0f02020f3060fb5ced2b02fd246a686c6d3936ad76b3ae6b8833897fceda"
+
+[[set]]
+format = "neuralynx"
+source = "gin"
+gin = "neuralynx/two_streams_with_small_time_differences"
+local = "neuralynx/two_streams_with_small_time_differences"
+files = 2
+bytes = 438884
+digest = "2aa153749d2e98601bee2286959886660a09f642b509473de8b4483d65a7da80"
+
+[[set]]
+format = "spikeglx"
+source = "other"
+origin = "IBL test file imec_385_100s (Neuropixels 3A, 100 s; its .meta fileSHA1 does not match: convert with --skip-source-check)"
+local = "spikeglx/imec_385_100s"
+files = 2
+bytes = 2310016653
+digest = "621af40576dc99ff0dce6cd5608591c643937661d3b786be60e1ebe0e8d45a29"
+
+[[set]]
+format = "tdt"
+source = "other"
+origin = "TDT example blocks (tdt.com sample data and lab recordings); 35 GB, not digested"
+local = "tdt-examples"

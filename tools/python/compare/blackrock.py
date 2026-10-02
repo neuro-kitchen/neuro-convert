@@ -1,37 +1,29 @@
-"""Compare neuro-convert's Blackrock reader, through the whole pipeline, with neo's BlackrockRawIO.
+"""Blackrock (NSx / NEV): per NSx file (neo opened with that file only, gap tolerance 0 for
+PTP) every sample of every channel (volts; neo's 2.1 reader drops the last sample, so the common
+length is compared) and the start of every part relative to the first; every spike time and
+waveform per electrode and unit class (offsets per container from the first NSx part); the digital
+input words. Path: the recording's base path without extension
+(`data/raw/blackrock/blackrock_3_0/file_spec_3_0`)."""
 
-Usage (from the workspace root):
-    cargo build --release
-    uv run --no-project --with neo --with pynwb --with hdmf-zarr tools/python/compare_blackrock.py <base> [<base> ...]
-
-<base> is the path without extension (e.g. data/raw/blackrock/blackrock_3_0/file_spec_3_0). Every
-container of the recording (clock segments) is converted to target/blackrock-compare/ and read back
-with pynwb. Compared with neo, per NSx file (neo opened with that file only, gap tolerance 0 for
-PTP): every sample of every channel (volts; neo's 2.1 reader drops the last sample, so the common
-length is compared), the start of every part relative to the first; the spikes (every time and
-waveform, per electrode and unit class, offsets per container from the first NSx part); the digital
-input words (times and values). Exits non-zero on any mismatch.
-"""
-
+import contextlib
 import subprocess
-import sys
 from pathlib import Path
 
 import numpy as np
-from hdmf_zarr import NWBZarrIO
 from neo.rawio import BlackrockRawIO
 
-BIN = "target/release/neuro-convert"
-OUT = Path("target/blackrock-compare")
-TO_SI = {"uV": 1e-6, "mV": 1e-3, "V": 1.0}
+from . import common
+from .common import TO_SI
+
+REQUIRES = ["neo"]
 
 
 def containers(base: Path) -> list[str | None]:
-    out = subprocess.run([BIN, "inspect", str(base.parent), "--block", base.name], capture_output=True, text=True)
+    out = subprocess.run([common.BIN, "inspect", str(base.parent), "--block", base.name], capture_output=True, text=True)
     text = out.stdout + out.stderr
     if "--block <name>:" in text:
         return [b.strip() for b in text.split("--block <name>:")[1].strip().splitlines()[0].split(",") if b.strip().startswith(base.name)]
-    out = subprocess.run([BIN, "inspect", str(base.parent)], capture_output=True, text=True)
+    out = subprocess.run([common.BIN, "inspect", str(base.parent)], capture_output=True, text=True)
     text = out.stdout + out.stderr
     if "--block <name>:" in text:
         names = [b.strip() for b in text.split("--block <name>:")[1].strip().splitlines()[0].split(",")]
@@ -40,33 +32,13 @@ def containers(base: Path) -> list[str | None]:
     return [None]
 
 
-def convert(base: Path, block: str | None) -> Path:
-    OUT.mkdir(parents=True, exist_ok=True)
-    tag = (base.name + ("_" + block.replace("/", "_") if block else "")).replace(" ", "_")
-    meta = OUT / f"{tag}.yaml"
-    meta.write_text("session: { description: Blackrock comparison, timezone: 'Z' }\n")
-    dest = OUT / f"{tag}.nwb.zarr"
-    src = next(p for p in base.parent.iterdir() if p.stem == base.name and p.suffix[1:].lower() in ("nev", "ns1", "ns2", "ns3", "ns4", "ns5", "ns6"))
-    cmd = [BIN, "convert", str(src), "-m", str(meta), "-o", str(dest), "--overwrite", "--verify", "sampled"]
-    if block:
-        cmd += ["--block", block]
-    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL)
-    return dest
-
-
-def series_values(s) -> np.ndarray:
-    data = np.asarray(s.data[:]).astype("f8") * s.conversion + getattr(s, "offset", 0.0)
-    if getattr(s, "channel_conversion", None) is not None:
-        data = data * np.asarray(s.channel_conversion)[None, :]
-    return data
-
-
-def main(base: Path) -> list[str]:
+def compare(base: Path, opts) -> list[str]:
     problems = []
-    blocks = containers(base)
-    stores = [(b, convert(base, b)) for b in blocks]
-    ios = [NWBZarrIO(str(d), mode="r") for _, d in stores]
-    nwbs = [io.read() for io in ios]
+    blocks = [opts.block] if opts.block else containers(base)
+    src = next(p for p in base.parent.iterdir() if p.stem == base.name and p.suffix[1:].lower() in ("nev", "ns1", "ns2", "ns3", "ns4", "ns5", "ns6"))
+    stores = [(b, common.convert(src, b, tag=base.name + ("_" + b if b else ""))) for b in blocks]
+    stack = contextlib.ExitStack()
+    nwbs = [stack.enter_context(common.open_nwb(d)) for _, d in stores]
     nsx = sorted(int(p.suffix[3:]) for p in base.parent.iterdir() if p.stem == base.name and p.suffix[1:3].lower() == "ns" and p.suffix[3:].isdigit())
 
     first_part_start = {}  # (container, nsx) -> (ours start, neo t_start)
@@ -85,7 +57,7 @@ def main(base: Path) -> list[str]:
             names = sorted({k.replace(".analog", "") for k in nwb.acquisition if k == f"ns{n}" or k.startswith(f"ns{n}.")}, key=lambda k: int(k.rsplit(".p", 1)[1]) if ".p" in k else 0)
             for name in names:
                 parts = [nwb.acquisition[k] for k in (name, name.replace(f"ns{n}", f"ns{n}.analog")) if k in nwb.acquisition]
-                values = np.hstack([series_values(p) for p in parts])
+                values = np.hstack([common.values(p) for p in parts])
                 ours.append((c, name, parts[0].starting_time, values))
         segs = neo.segment_count(0)
         if segs != len(ours):
@@ -171,15 +143,5 @@ def main(base: Path) -> list[str]:
         if len(mine_t) != len(t) or not np.allclose(mine_t, t, atol=2e-6) or not np.array_equal(mine_v, v):
             problems.append(f"digital input: {len(mine_t)} words here, {len(t)} in neo, or times / values differ")
         print(f"{base.name}: {len(t)} digital input words compared")
-    for io in ios:
-        io.close()
+    stack.close()
     return problems
-
-
-if __name__ == "__main__":
-    all_problems = []
-    for arg in sys.argv[1:]:
-        all_problems += main(Path(arg))
-    for p in all_problems:
-        print("MISMATCH:", p)
-    sys.exit(1 if all_problems else 0)
