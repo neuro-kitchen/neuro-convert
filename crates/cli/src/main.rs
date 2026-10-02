@@ -37,6 +37,15 @@ enum Command {
         /// Store to check (`.nwb.zarr`)
         path: PathBuf,
     },
+    /// Check a store's structure and re-check its content against the digests in its conversion
+    /// report (no source needed; e.g. after copying or uploading the store)
+    Verify {
+        /// Store to check (`.nwb.zarr`)
+        path: PathBuf,
+        /// Conversion report (default: `<store>.report.json` next to it)
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 fn main() -> anyhow::Result<()> {
@@ -46,5 +55,9 @@ fn main() -> anyhow::Result<()> {
         Command::Inspect { path, read_sec, json: false, open } => commands::inspect::run(&path, read_sec, &open.options()),
         Command::Convert(args) => commands::convert::run(&args),
         Command::Validate { path } => commands::convert::validate(&path),
+        Command::Verify { path, report } => {
+            let report = report.unwrap_or_else(|| path.with_extension("report.json"));
+            commands::convert::verify(&path, Some(&report))
+        }
     }
 }

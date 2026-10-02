@@ -35,6 +35,14 @@ pub struct ConvertArgs {
     /// Print the plan and exit without writing
     #[arg(long)]
     dry_run: bool,
+    /// Compare the written data with the source: `full` (every block, and source files against
+    /// the checksums their format records), `sampled` (first, last and random blocks), `off`
+    #[arg(long, default_value = "full")]
+    verify: nwb::VerifyLevel,
+    /// Do not compare source files with the checksums their format records (e.g. SpikeGLX
+    /// `fileSHA1` of a file edited after recording)
+    #[arg(long)]
+    skip_source_check: bool,
     #[command(flatten)]
     open: super::OpenArgs,
 }
@@ -56,7 +64,7 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     }
 
     let gzip = (!a.no_compression).then_some(a.gzip);
-    let mut options = NwbOptions { gzip, overwrite: a.overwrite, chunks: a.chunk, ..Default::default() };
+    let mut options = NwbOptions { gzip, overwrite: a.overwrite, chunks: a.chunk, verify: a.verify, source_checksums: !a.skip_source_check, ..Default::default() };
     if let Some(t) = a.threads {
         options.threads = t;
     }
@@ -66,16 +74,26 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     ctrlc::set_handler(move || on_signal.cancel())?;
 
     println!("\nWriting {} ({} threads, {}) …", a.output.display(), options.threads, gzip.map_or("uncompressed".into(), |l| format!("gzip {l}")));
+    let stage = std::sync::Mutex::new(Stage::Writing);
     let result = job.write(&a.output, &options, &cancel, &|e| match e {
         Event::Progress(p) => {
             let pct = if p.total > 0 { p.done as f64 * 100.0 / p.total as f64 } else { 100.0 };
-            // Progress counts samples (all channels); series differ in sample size, so no MB/s
+            // Progress counts bytes (source check) or samples (all channels); series differ in
+            // sample size, so no MB/s while writing
             let rate = p.done as f64 / 1e6 / p.elapsed.as_secs_f64().max(1e-9);
-            print!("\r  {pct:5.1}%  {rate:7.1} M samples/s  {:5.0} s", p.elapsed.as_secs_f64());
+            let unit = if *stage.lock().unwrap() == Stage::CheckingSource { "MB/s       " } else { "M samples/s" };
+            print!("\r  {pct:5.1}%  {rate:7.1} {unit}  {:5.0} s", p.elapsed.as_secs_f64());
             let _ = std::io::stdout().flush();
         }
-        Event::Stage(Stage::Verifying) => print!("\n  verifying the store …"),
-        Event::Stage(_) => {}
+        Event::Stage(s) => {
+            *stage.lock().unwrap() = s;
+            match s {
+                Stage::CheckingSource => println!("  checking source checksums …"),
+                Stage::Writing => {}
+                Stage::Verifying => println!("\n  verifying the store ({:?}) …", options.verify),
+                Stage::Done => {}
+            }
+        }
     });
     let report = match result {
         Err(nc_convert::Error::Cancelled) => anyhow::bail!("\ncancelled; the partial output was removed"),
@@ -83,6 +101,12 @@ pub fn run(a: &ConvertArgs) -> anyhow::Result<()> {
     };
     let s = &report.summary;
     println!("\nDone: {} series, {:.2} G samples in {:.1} s", s.series, s.samples as f64 / 1e9, s.seconds);
+    for c in &report.source_checks {
+        println!("source {} {}: {}", c.algorithm, if c.ok() { "ok" } else { "MISMATCH" }, c.path.display());
+    }
+    if let Some(d) = &report.digests {
+        println!("{}", d.summary());
+    }
     for i in &report.verification {
         println!("{} {}", if i.level == Level::Error { "ERROR:  " } else { "warning:" }, i.message);
     }
@@ -148,6 +172,31 @@ pub fn validate(path: &std::path::Path) -> anyhow::Result<()> {
     println!("{}: {errors} errors, {} warnings", path.display(), issues.len() - errors);
     if errors > 0 {
         anyhow::bail!("{} is not a valid NWB-Zarr store", path.display());
+    }
+    Ok(())
+}
+
+/// Structural checks plus, with a conversion report, the content digests it recorded.
+pub fn verify(path: &std::path::Path, report: Option<&std::path::Path>) -> anyhow::Result<()> {
+    let mut issues = nwb::validate::validate(path)?;
+    if let Some(r) = report {
+        let text = std::fs::read_to_string(r)?;
+        let json: serde_json::Value = serde_json::from_str(&text)?;
+        let saved: nwb::Digests = match json.get("digests") {
+            Some(d) if !d.is_null() => serde_json::from_value(d.clone())?,
+            _ => anyhow::bail!("{} has no digests (converted with --verify off?)", r.display()),
+        };
+        let (checked, content) = nwb::integrity::recheck(path, &saved, nwb::available_threads(0))?;
+        issues.extend(content);
+        println!("{}", checked.summary().replace("the source", "the report"));
+    }
+    let errors = issues.iter().filter(|i| i.level == Level::Error).count();
+    for i in &issues {
+        println!("{} {}", if i.level == Level::Error { "ERROR:  " } else { "warning:" }, i.message);
+    }
+    println!("{}: {errors} errors, {} warnings", path.display(), issues.len() - errors);
+    if errors > 0 {
+        anyhow::bail!("{} failed verification", path.display());
     }
     Ok(())
 }
