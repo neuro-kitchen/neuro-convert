@@ -1,7 +1,8 @@
 //! The Contents step: the tree of the recording (include checkboxes, issue flags) and a card for
 //! the selected item — for a stream: what kind of signal it is, its electrodes, and its details.
 //! Listens to: RecordingOpened (tree), MetadataReloaded (card fields), MetadataChanged and
-//! PlanUpdated (card and flags); `NavEvent::Reveal` selects an item.
+//! PlanUpdated (card and flags), PreviewRequested (a stream picked in the preview becomes the
+//! selection); `NavEvent::Reveal` selects an item.
 
 use std::collections::{HashMap, HashSet};
 
@@ -11,7 +12,7 @@ use gpui_kit::{App, AppContext as _, Context, Entity, ScrollStrategy, SharedStri
 use nc_convert::core::{Calibration, ElectrodeGroupSpec, Issue, ItemKind, MetadataFile, Session, StreamType, Target};
 
 use super::nav::{NavEvent, NavVm};
-use crate::domain::format::{home, short_path, LOCATIONS, UNITS};
+use crate::domain::format::{LOCATIONS, UNITS};
 use crate::domain::AppEvent;
 use crate::store::Store;
 use crate::widgets::{duration, Inclusion, TableData};
@@ -157,12 +158,12 @@ pub struct Heading {
     pub kind: &'static str,
     pub name: String,
     pub facts: String,
-    /// `→ ElectricalSeries`, `→ events table`, `left out`.
+    /// `ElectricalSeries`, `events table`, `left out`.
     pub dest: String,
 }
 
 pub fn heading(s: &Session, meta: &MetadataFile, sel: &Selection) -> Option<Heading> {
-    let left_out = |kind, name: &str, dest: String| if meta.included(kind, name) { format!("→ {dest}") } else { "left out".to_string() };
+    let left_out = |kind, name: &str, dest: String| if meta.included(kind, name) { dest } else { "left out".to_string() };
     Some(match sel {
         Selection::Stream(n) => {
             let card = stream_card(s, meta, n)?;
@@ -189,7 +190,7 @@ pub fn heading(s: &Session, meta: &MetadataFile, sel: &Selection) -> Option<Head
         }
         Selection::Group(n) => {
             let count = s.electrodes.iter().filter(|e| &e.group == n).count();
-            Heading { kind: "Electrode group", name: n.clone(), facts: format!("{count} electrodes"), dest: "→ electrodes table".into() }
+            Heading { kind: "Electrode group", name: n.clone(), facts: format!("{count} electrodes"), dest: "electrodes table".into() }
         }
         Selection::None => return None,
     })
@@ -372,6 +373,14 @@ impl ContentsVm {
                     cx.notify();
                 }
                 AppEvent::MetadataChanged => cx.notify(),
+                // A stream picked elsewhere (the preview's dropdown) becomes the selection, so the
+                // tree, heading and settings follow it
+                AppEvent::PreviewRequested => {
+                    let preview = this.store.read(cx).ws.preview.clone();
+                    if let Some(name) = preview.filter(|n| this.selected != Selection::Stream(n.clone())) {
+                        this.select_id(&format!("s/{name}"), window, cx);
+                    }
+                }
                 _ => {}
             }),
             cx.observe_in(&tree, window, |this, tree, window, cx| {
@@ -632,11 +641,11 @@ impl ContentsVm {
         let ws = &self.store.read(cx).ws;
         let card = stream_card(ws.session()?, &ws.meta, name)?;
         Some(if card.neural {
-            "neural"
+            "ElectricalSeries"
         } else if card.looks_electrical {
-            "other?"
+            "TimeSeries?"
         } else {
-            "other"
+            "TimeSeries"
         })
     }
 
@@ -665,12 +674,6 @@ impl ContentsVm {
 
     pub fn unit_suggestions(&self) -> Vec<String> {
         UNITS.iter().map(|u| u.to_string()).collect()
-    }
-
-    pub fn source_line(&self, cx: &App) -> String {
-        let ws = &self.store.read(cx).ws;
-        let home = home();
-        ws.state.source.as_ref().map(|p| short_path(p, home.as_deref(), 70)).unwrap_or_default()
     }
 }
 
@@ -746,10 +749,10 @@ mod tests {
         open(&mut ws, "session.fake");
         let s = ws.session().unwrap();
         let h = heading(s, &ws.meta, &Selection::Stream("Wav1".into())).unwrap();
-        assert_eq!((h.kind, h.facts.as_str(), h.dest.as_str()), ("Stream", "2 ch · 1 000 Hz · 2.00 s · V", "→ TimeSeries"));
+        assert_eq!((h.kind, h.facts.as_str(), h.dest.as_str()), ("Stream", "2 ch · 1 000 Hz · 2.00 s · V", "TimeSeries"));
         let tick = Selection::Event(s.events[0].name.clone());
         let h = heading(s, &ws.meta, &tick).unwrap();
-        assert_eq!(h.dest, "→ events table");
+        assert_eq!(h.dest, "events table");
         let t = table_data(s, &tick).unwrap();
         assert_eq!(t.columns[..2], [("#".to_string(), true), ("Onset (s)".to_string(), true)]);
         assert_eq!(t.rows.len(), s.events[0].len());

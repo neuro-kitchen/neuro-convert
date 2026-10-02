@@ -104,6 +104,9 @@ impl RenderOnce for Traces {
     }
 }
 
+/// Width of the [`ProbeMap`].
+pub const PROBE_MAP_WIDTH: f32 = 90.;
+
 #[derive(IntoElement)]
 pub struct ProbeMap {
     /// Site positions (µm) and whether the channel is visible.
@@ -140,7 +143,7 @@ impl RenderOnce for ProbeMap {
                 }
             },
         )
-        .w(px(90.))
+        .w(px(PROBE_MAP_WIDTH))
         .h_full()
     }
 }

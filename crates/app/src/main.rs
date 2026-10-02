@@ -38,7 +38,9 @@ fn main() {
         let options = WindowOptions {
             titlebar: Some(TitlebarOptions { title: Some("neuro-convert".into()), ..TitleBar::title_bar_options() }),
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(None, size(px(1400.), px(880.)), cx))),
-            window_min_size: Some(size(px(1000.), px(620.))),
+            // Under half a 1920 px screen, so GNOME can tile it (Super+←/→); GNOME refuses to
+            // tile a window whose minimum is wider than the tile
+            window_min_size: Some(size(px(760.), px(560.))),
             app_id: Some("org.neuro-kitchen.neuro-convert".into()),
             ..TitleBar::window_options()
         };

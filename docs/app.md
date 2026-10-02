@@ -18,22 +18,26 @@ each format expects (from the readers), recent recordings, and, for a TDT tank o
 several SpikeGLX runs, the recordings to choose from.
 
 ### ② Contents
-A heading says what is selected, its facts and where it goes (e.g. *Stream HDEG · 32 ch · 24 414 Hz
-· 47 min 12 s · V → TimeSeries*). Below it three regions; the side panels are hidden and shown with
-the buttons at both ends of the heading (or their ×), and the choice is remembered:
+Three regions. The middle one's heading says what is selected, its facts and where it goes (e.g.
+*Stream HDEG · 32 ch · 24 414 Hz · 47 min 12 s · V · TimeSeries*). Each side panel has a toggle
+beside its title; hiding the panel hides the title, and the toggle stays at the same edge (at the
+end of the middle heading) to show it again. The choice is remembered:
 - **Left panel, Recording:** everything in the recording, with a checkbox per item (unticked items
   are left out; the choice is saved with the metadata). A ⚠ marks items with an issue; streams are
-  tagged *neural*, *other*, or *other?* (many channels at a high rate: probably electrode data,
-  decide on the right).
+  tagged *ElectricalSeries*, *TimeSeries*, or *TimeSeries?* (many channels at a high rate:
+  probably electrode data, decide on the right).
 - **Middle:** the data. A stream shows its preview (see Preview); events, tables, snippets and
   electrode groups show their rows in a table (click a header to sort; numbers sort as numbers).
 - **Right panel, Settings** of the selected item. For a stream:
-  - **What is this signal?** *Automatic* / *Neural* / *Other*, with one line on what the choice
-    means: *Neural* is stored as `ElectricalSeries` and needs electrodes; *Other* (EMG envelope,
-    temperature, stimulus…) as `TimeSeries`; *Automatic* is neural when the recording supplies
-    electrodes (e.g. a Neuropixels probe).
-  - **Electrodes** (neural only): choose an electrode group or **New group…**, then its location
-    (suggestions: common brain areas and what you typed before), description and device. Every
+  - **What is this signal?** **Detect automatically** (on by default) shows the detected type in a
+    greyed dropdown: *ElectricalSeries* when the recording supplies electrodes (e.g. a Neuropixels
+    probe), else *TimeSeries*. Switch it off to choose; the dropdown is highlighted until you pick.
+    One line under it says what the type holds: *ElectricalSeries* is voltage from electrodes
+    (spikes, LFP, EEG, ECoG, EMG; needs electrodes), *TimeSeries* any other signal (EMG envelope,
+    temperature, stimulus monitor, sync…).
+  - **Electrodes** (ElectricalSeries only): choose an electrode group or **New group…**, then its location
+    (a dropdown of common brain areas and what you typed before; **Other…** opens a text box),
+    description and device. Every
     channel becomes one electrode of the group. Groups shared by several streams say so. Picking
     probe designs and headstage wiring is planned separately.
   - **Details**: name in the NWB file, unit, and scale factor (needed when the recording does not
@@ -42,7 +46,7 @@ the buttons at both ends of the heading (or their ×), and the choice is remembe
 ### ③ Metadata
 The form is a centered column. Session: description, start time (date and time, preset to the recorded time; "Use the
 recorded time" undoes a change) and **time zone** (searchable list of UTC offsets with places;
-recording systems store local time). Subject: id, species (suggestions with common names), sex,
+recording systems store local time). Subject: id, species (dropdown with common names; **Other…** to type one), sex,
 age (number + days / weeks / months / years). **More details**: experiment, experimenters, lab,
 institution, keywords, strain, identifier. Fields with a problem are outlined and say why.
 **I'll upload to DANDI** (remembered) makes DANDI's recommendations (species, age, sex) count as
@@ -54,8 +58,9 @@ remembered and offered next time. **Save metadata** (Ctrl+S) writes a YAML usabl
 recording. Comments in a loaded YAML are not kept when saving.
 
 ### ④ Review & convert
-What will be written (summary), the remaining issues with links to fix them, the output folder
-(`.nwb.zarr`, default next to the recording) and **Advanced** (compression, chunks, check after
+What will be written (summary), the remaining issues with links to fix them, the output (default
+next to the recording; in builds with HDF5, **Format** chooses a Zarr folder `.nwb.zarr` or one
+HDF5 file `.nwb`) and **Advanced** (compression, chunks, check after
 writing, threads). The
 only **Convert** button (Ctrl+Enter) is here; when disabled it says what to fix. Progress shows
 samples copied, speed and time left; **Cancel** (Esc) stops and removes the partial output. Every
@@ -69,7 +74,8 @@ the store's name (editable) in the folder shown under it (**Choose…** to chang
 ## Preview
 Dropdowns choose the **stream**, the **channels** (all, or one electrode group when a stream spans
 several), how many **lanes** are shown at once (4–64) and **markers** (an event series drawn as
-vertical lines); zoom − / + and **Gain**.
+vertical lines); zoom − / + and **Gain**. A stream opens with its first second (the whole
+recording when it is shorter; then times are in ms).
 
 Moving around, without buttons:
 - **Time:** drag the traces, swipe sideways on a trackpad, or Shift+wheel; the view follows

@@ -206,6 +206,10 @@ impl ConvertVm {
         cx.notify();
     }
 
+    pub fn store(&self) -> &Entity<Store> {
+        &self.store
+    }
+
     /// The output's folder: (shortened, full) for the line under the name.
     pub fn folder(&self, cx: &App) -> Option<(String, String)> {
         let parent = self.store.read(cx).ws.output.as_ref()?.parent()?.to_path_buf();

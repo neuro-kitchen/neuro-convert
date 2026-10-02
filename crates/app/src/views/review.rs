@@ -16,7 +16,7 @@ use nc_convert::nwb::{ChunkPolicy, VerifyLevel};
 use crate::actions::{Cancel, ChooseOutput, Convert};
 use crate::viewmodels::nav::NavVm;
 use crate::viewmodels::{ConvertVm, PlanVm};
-use crate::widgets::{Card, FormRow, IssueList, IssueRow, Muted, ProgressCard, Section, SidePanel};
+use crate::widgets::{Card, FormRow, IssueList, IssueRow, MenuSelect, Muted, ProgressCard, Section, SidePanel};
 
 pub struct ReviewView {
     plan: Entity<PlanVm>,
@@ -103,8 +103,29 @@ impl Render for ReviewView {
                     .on_open(move |target, _, cx| nav.update(cx, |nav, cx| nav.reveal(target, cx))),
             );
 
+        // NWB on Zarr (a folder) or HDF5 (one file), when this build writes HDF5
+        let format = self.convert.read(cx).store().read(cx).ws.output.as_deref().map_or(nc_convert::nwb::Format::Zarr, nc_convert::nwb::Format::of);
+        let format_row = nc_convert::nwb::HDF5.then(|| {
+            let store = self.convert.read(cx).store().clone();
+            let options: Vec<SharedString> = vec!["Zarr folder (.nwb.zarr)".into(), "HDF5 file (.nwb)".into()];
+            let selected = usize::from(format == nc_convert::nwb::Format::Hdf5);
+            let pick = MenuSelect::new("output-format", options[selected].clone(), options, Some(selected), move |i, _, cx| {
+                let format = if i == 1 { nc_convert::nwb::Format::Hdf5 } else { nc_convert::nwb::Format::Zarr };
+                store.update(cx, |s, cx| s.apply(cx, |ws| {
+                    let next = ws.output.as_deref().map(|p| nc_convert::nwb::backend::with_format(p, format));
+                    ws.set_output(next)
+                }));
+            })
+            .disabled(s.writing);
+            FormRow::new("Format", pick).compact().help("Zarr: a folder of chunk files (DANDI, cloud). HDF5: one .nwb file (most NWB tools)")
+        });
+        let help = match format {
+            nc_convert::nwb::Format::Hdf5 => "A file ending in .nwb; an existing one is replaced",
+            nc_convert::nwb::Format::Zarr => "A folder ending in .nwb.zarr; an existing one is replaced",
+        };
         let output_card = Card::new()
             .title("Output")
+            .children(format_row)
             .child(
                 FormRow::new(
                     "NWB store",
@@ -118,7 +139,7 @@ impl Render for ReviewView {
                         )
                         .children(folder.map(|(short, full)| div().id("output-folder").text_xs().text_color(muted).child(format!("in {short}")).tooltip(move |window, cx| gpui_kit::component::tooltip::Tooltip::new(full.clone()).build(window, cx)))),
                 )
-                .help("A folder ending in .nwb.zarr; an existing one is replaced"),
+                .help(help),
             )
             .child(self.toggle("advanced", self.advanced, "Advanced: compression, chunks, checks, threads", cx, |this| this.advanced = !this.advanced))
             .children(self.advanced.then(|| self.options(cx)));

@@ -507,8 +507,13 @@ mod tests {
     fn stream_card_sets_signal_kind_and_group(cx: &mut TestAppContext) {
         let (window, store, app) = open(cx, &scratch("card"));
         open_recording(cx, &store, "session.fake");
-        // The first stream is selected; make it neural
-        click(cx, window, "kind-neural");
+        // The first stream is selected; switching detection off asks for a type, then make it neural
+        cx.update(|cx| assert_eq!(store.read(cx).ws.meta.stream("Wav1").kind, None));
+        click(cx, window, "kind-auto");
+        cx.update(|cx| assert_eq!(store.read(cx).ws.meta.stream("Wav1").kind, None, "nothing chosen yet"));
+        let contents = cx.update(|cx| app.read(cx).contents_vm.clone());
+        cx.update_window(window, |_, window, cx| contents.update(cx, |vm, cx| vm.set_kind(Some(StreamType::Electrical), window, cx))).unwrap();
+        cx.run_until_parked();
         let stream_error = |cx: &mut TestAppContext| {
             cx.update(|cx| store.read(cx).ws.plan.as_ref().unwrap().issues.iter().any(|i| i.target == Some(Target::Stream("Wav1".into())) && i.level == nc_convert::core::Level::Error))
         };
@@ -529,15 +534,20 @@ mod tests {
             assert_eq!(m.stream("Wav1").electrode_group.as_deref(), Some("group1"));
             assert_eq!(m.electrode_groups[0].name, "group1");
         });
-        // The group's location is typed in the card
-        cx.update_window(window, |_, window, cx| {
+        // The group's location is a dropdown; no text box until "Other…" or a value not in the list
+        let text_box = |cx: &mut TestAppContext| cx.update_window(window, |_, window, cx| {
             window.render_frame(cx);
-            window.click("group-location", cx);
-            window.input("M1", cx);
+            window.try_find("group-location-text").is_some()
+        }).unwrap();
+        assert!(!text_box(cx));
+        cx.update_window(window, |_, window, cx| {
+            let state = contents.read(cx).fields.group_location.clone().unwrap();
+            state.update(cx, |s, cx| s.replace_all("Custom area", window, cx));
         })
         .unwrap();
         cx.run_until_parked();
-        cx.update(|cx| assert_eq!(store.read(cx).ws.meta.electrode_groups[0].location, "M1"));
+        assert!(text_box(cx), "a value not in the list shows the text box");
+        cx.update(|cx| assert_eq!(store.read(cx).ws.meta.electrode_groups[0].location, "Custom area"));
     }
 
     #[gpui_kit::test]
@@ -641,6 +651,11 @@ mod tests {
         cx.update_window(window, |_, window, cx| contents.update(cx, |vm, cx| vm.select_id("s/Temp", window, cx))).unwrap();
         cx.run_until_parked();
         assert_eq!(cx.update(|cx| store.read(cx).ws.preview.clone()), Some("Temp".into()));
+        // ...and picking a stream in the preview's dropdown selects it in the tree (heading and
+        // settings follow)
+        cx.update(|cx| crate::viewmodels::PreviewVm::select_stream(&preview, "Wav1".into(), cx));
+        cx.run_until_parked();
+        cx.update(|cx| assert_eq!(contents.read(cx).selected, crate::viewmodels::contents::Selection::Stream("Wav1".into())));
     }
 
     #[gpui_kit::test]
@@ -658,13 +673,24 @@ mod tests {
             window.render_frame(cx);
             assert!(window.find("contents-heading").bounds().size.height > px(20.));
         }).unwrap();
+        // The toggle sits beside the panel's title; hiding the panel keeps it at the same edge
+        let left = |cx: &mut TestAppContext| cx.update_window(window, |_, window, cx| {
+            window.render_frame(cx);
+            window.find("toggle-tree").bounds().origin.x
+        }).unwrap();
+        let x = left(cx);
         click(cx, window, "toggle-tree");
         assert!(!visible(cx, "tree-panel"), "tree hidden");
+        assert!(visible(cx, "toggle-tree"), "its toggle stays");
+        assert!((left(cx) - x).abs() < px(12.), "at the same edge");
         cx.update(|cx| assert!(!store.read(cx).ws.settings.panels.tree, "remembered"));
         click(cx, window, "toggle-tree");
         assert!(visible(cx, "tree-panel"));
-        click(cx, window, "inspector-panel-close");
+        click(cx, window, "toggle-inspector");
         assert!(!visible(cx, "inspector-panel"));
+        assert!(visible(cx, "toggle-inspector"));
+        click(cx, window, "toggle-inspector");
+        assert!(visible(cx, "inspector-panel"));
 
         // An event series shows its rows in a table
         let contents = cx.update(|cx| app.read(cx).contents_vm.clone());
