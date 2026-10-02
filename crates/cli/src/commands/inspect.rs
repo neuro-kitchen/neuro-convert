@@ -170,7 +170,7 @@ pub fn json(path: &Path, at_sec: Option<f64>, options: &OpenOptions) -> anyhow::
         .iter()
         .map(|sn| serde_json::json!({ "name": sn.name, "count": sn.len(), "samples_per_snippet": sn.samples_per_snippet,
             "rate": sn.sample_rate, "timestamps": &sn.timestamps[..3.min(sn.len())], "channels": &sn.channels[..3.min(sn.len())],
-            "sort_codes": &sn.sort_codes[..3.min(sn.len())], "values": &sn.data[..3.min(sn.data.len())] }))
+            "sort_codes": &sn.sort_codes[..3.min(sn.len())], "values": sn.read(&[0]).map(|w| w[..3.min(w.len())].to_vec()).unwrap_or_default() }))
         .collect();
     let out = serde_json::json!({ "format": s.provenance.format, "version": s.provenance.version, "duration": s.duration(),
         "recordings": recordings, "events": events, "snippets": snippets, "electrode_groups": s.electrode_groups,

@@ -34,13 +34,13 @@ enum Command {
     Convert(commands::convert::ConvertArgs),
     /// Check an NWB-Zarr store's structure (references, lengths, required fields)
     Validate {
-        /// Store to check (`.nwb.zarr`)
+        /// Store to check (`.nwb.zarr`, or `.nwb` in HDF5 builds)
         path: PathBuf,
     },
     /// Check a store's structure and re-check its content against the digests in its conversion
     /// report (no source needed; e.g. after copying or uploading the store)
     Verify {
-        /// Store to check (`.nwb.zarr`)
+        /// Store to check (`.nwb.zarr`, or `.nwb` in HDF5 builds)
         path: PathBuf,
         /// Conversion report (default: `<store>.report.json` next to it)
         #[arg(long)]
