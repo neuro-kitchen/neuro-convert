@@ -44,7 +44,32 @@ electrodes table column lengths and group references, electrode-group → device
 series has data + unit + (rate or matching timestamps), electrical series reference valid electrode
 rows matching their channel count, interval tables have equal columns and no negative durations.
 
-## Verification
+## Content verification (`nc_nwb::integrity`, `Job::write`)
+Structure checks never read samples, so after writing every array with sample data is compared with
+the source:
+- **What:** continuous series `data`, event `timestamp` / `duration` / `value` (or scalar series
+  `data` / `timestamps`), snippet `data` / `timestamps`.
+- **How:** in blocks of ~8 MB of rows (independent of the store's chunking). The source side is read
+  again through the reader (`read_stored`, or `read` as float32) and laid out as the store's dtype,
+  row-major `[time, channel]`, little-endian; the store side is read back through `zarrs`. Neither
+  side uses the writer's copy code, so misplaced or swapped chunks, transpositions and dtype
+  errors are caught. Each block is hashed with **xxh3-64**; equal bytes are required.
+- **Levels** (`NwbOptions.verify`, CLI `--verify`): `full` (CLI default; every block), `sampled`
+  (app default; first, last and 8 random blocks per array), `off` (structure only).
+- **Source checksums:** at `full`, files whose format records a checksum (SpikeGLX `fileSHA1` in the
+  `.meta`) are hashed (SHA-1) before writing; a mismatch stops the conversion (CLI
+  `--skip-source-check` to convert anyway). TDT records none.
+- **Report:** `digests` (algorithm, level, per array: dtype, shape, rows per block, block digests,
+  overall digest when full, mismatched blocks) and `source_checks`. A mismatch is a verification
+  error, so `convert` fails.
+- **Later:** `neuro-convert verify <store> [--report <report.json>]` re-reads the recorded blocks of
+  a copy (e.g. after an upload) and compares them with the report, without the source.
+
+Timings (2026-10-01, 12 threads, release, gzip 1): TDT 47 min block (2.78 G samples, 28 arrays):
+write 32 s, full verify 24 s, sampled < 2 s; `verify` from the report 12 s. IBL 100 s
+Neuropixels: write 10.5 s, full verify ~5 s; SHA-1 of the 2.3 GB `.bin` ~5 s.
+
+## Test stores
 `crates/nwb/tests/write.rs` writes small stores to `target/nwb-test/`;
 `tools/python/validate_nwb.py` reads `small.nwb.zarr` back with pynwb + hdmf-zarr (exact values)
 and runs nwbinspector. Checked 2026-10-01 with pynwb 4.2.0, hdmf-zarr 0.14.0, zarr 3.4.0,

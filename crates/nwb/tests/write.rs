@@ -290,3 +290,57 @@ fn chunk_policy_parses_and_sizes_auto_chunks_by_bytes() {
     let meta: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(dest.join("acquisition/EMG/data/zarr.json")).unwrap()).unwrap();
     assert_eq!(meta["chunk_grid"]["configuration"]["chunk_shape"], serde_json::json!([1000, 3]));
 }
+
+/// Content verification: a fresh store matches its source; swapped or damaged chunks do not, and
+/// the saved digests re-check a store without the source.
+#[test]
+fn integrity_detects_swapped_and_damaged_chunks() {
+    use nwb::integrity::{recheck, verify};
+    use nwb::VerifyLevel;
+    let mut s = session();
+    // A native (read_stored) float64 stream next to the float32 ones
+    let template = MemoryRecording::new("P", vec![0.0; 2 * 500], 2, 1000.0, "a.u.").unwrap();
+    let mut info = nc_core::Recording::info(&template).clone();
+    info.name = "Precise".into();
+    info.stored_as = nc_core::SampleType::F64;
+    s.recordings.push(Arc::new(F64Recording { info, data: (0..1000).map(|i| i as f64 * 0.25).collect() }));
+    let plan = nwb::plan(&mut s, &MetadataFile::parse(META).unwrap(), || "integrity-id".into());
+    let dest = out_dir().join("integrity.nwb.zarr");
+    // 0.3 s chunks: EMG (1000 Hz) has 4 chunks
+    nwb::write(&s, &plan, &dest, &NwbOptions { overwrite: true, threads: 2, chunks: nwb::ChunkPolicy::Seconds(0.3), gzip: None, ..Default::default() }, &|_| {}).unwrap();
+
+    let (digests, issues) = verify(&s, &plan, &dest, VerifyLevel::Full, 2, None, &|_| {}).unwrap();
+    assert!(issues.is_empty(), "{issues:?}");
+    let paths: Vec<&str> = digests.arrays.iter().map(|a| a.path.as_str()).collect();
+    for p in ["/acquisition/EMG/data", "/acquisition/Temp/data", "/acquisition/Precise/data", "/events/MET/timestamp", "/events/MET/duration", "/acquisition/eS1p/data", "/acquisition/eNe1_ch1/data", "/acquisition/eNe1_ch1/timestamps"] {
+        assert!(paths.contains(&p), "{p} verified: {paths:?}");
+    }
+    let precise = digests.arrays.iter().find(|a| a.path == "/acquisition/Precise/data").unwrap();
+    assert_eq!((precise.dtype.as_str(), precise.digest.is_some()), ("float64", true));
+    assert!(recheck(&dest, &digests, 2).unwrap().1.is_empty(), "an intact store passes the re-check");
+    let (none, _) = verify(&s, &plan, &dest, VerifyLevel::Off, 1, None, &|_| {}).unwrap();
+    assert!(none.arrays.is_empty());
+
+    // A writer that put two chunks in each other's place: same bytes, wrong rows
+    let chunk = |k: usize| dest.join(format!("acquisition/EMG/data/c/{k}/0"));
+    let (a, b) = (std::fs::read(chunk(0)).unwrap(), std::fs::read(chunk(1)).unwrap());
+    std::fs::write(chunk(0), &b).unwrap();
+    std::fs::write(chunk(1), &a).unwrap();
+    for level in [VerifyLevel::Full, VerifyLevel::Sampled] {
+        let (d, issues) = verify(&s, &plan, &dest, level, 2, None, &|_| {}).unwrap();
+        assert_eq!(d.mismatched(), 1, "{level:?}: {issues:?}");
+        assert!(issues.iter().any(|i| i.message.starts_with("/acquisition/EMG/data: content differs from the source")), "{issues:?}");
+    }
+    assert_eq!(recheck(&dest, &digests, 2).unwrap().0.mismatched(), 1, "the saved digests catch it without the source");
+    std::fs::write(chunk(0), &a).unwrap();
+    std::fs::write(chunk(1), &b).unwrap();
+
+    // One flipped bit in a snippet waveform
+    let snip = dest.join("acquisition/eNe1_ch1/data/c/0/0/0");
+    let mut bytes = std::fs::read(&snip).unwrap();
+    bytes[5] ^= 0x10;
+    std::fs::write(&snip, bytes).unwrap();
+    let (_, issues) = verify(&s, &plan, &dest, VerifyLevel::Full, 1, None, &|_| {}).unwrap();
+    assert_eq!(issues.len(), 1, "{issues:?}");
+    assert!(issues[0].message.starts_with("/acquisition/eNe1_ch1/data"));
+}
