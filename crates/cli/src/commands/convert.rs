@@ -13,7 +13,7 @@ pub struct ConvertArgs {
     /// Metadata file (YAML): session, subject, electrode groups, per-stream mapping
     #[arg(short, long)]
     metadata: Option<PathBuf>,
-    /// Output store (`.nwb.zarr`)
+    /// Output: a Zarr store (`name.nwb.zarr`) or, in builds with the `hdf5` feature, an HDF5 file (`name.nwb`)
     #[arg(short, long)]
     output: PathBuf,
     /// gzip level 1-9 for datasets
