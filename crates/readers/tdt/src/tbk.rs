@@ -11,6 +11,7 @@ use nc_base::text::decode_single_byte;
 /// One store's settings (`StoreName`, `NumChan`, `SampleFreq`, `DataFormat`, …).
 pub type TbkStore = BTreeMap<String, String>;
 
+/// The store settings of a `.Tbk` file (one entry per store section).
 pub fn parse_tbk(bytes: &[u8]) -> Vec<TbkStore> {
     let text = decode_single_byte(bytes);
     let parts: Vec<&str> = text.split("[USERNOTEDELIMITER]").collect();

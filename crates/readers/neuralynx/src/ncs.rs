@@ -15,27 +15,37 @@ use nc_core::{check_read, Error, Recording, RecordingInfo, Result};
 
 use crate::header::{self, Acquisition, Header};
 
+/// Bytes per `.ncs` record: µs timestamp, channel, rate, valid count, 512 samples.
 pub const RECORD: usize = 8 + 4 + 4 + 4 + 512 * 2;
+/// Samples per record.
 pub const BLOCK: usize = 512;
 
 /// Records `first..=last` with contiguous samples.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Section {
+    /// First record.
     pub first: usize,
+    /// Last record (inclusive).
     pub last: usize,
     /// µs of the first sample.
     pub start: u64,
+    /// Valid samples in the section.
     pub samples: u64,
 }
 
+/// One `.ncs` file, memory-mapped.
 #[derive(Debug)]
 pub struct NcsFile {
+    /// The mapped file.
     pub file: Arc<MappedFile>,
+    /// Its header.
     pub header: Header,
+    /// Number of whole records.
     pub records: usize,
 }
 
 impl NcsFile {
+    /// Maps the file at `path` and reads its header.
     pub fn open(path: &std::path::Path) -> Result<Self> {
         let file = Arc::new(MappedFile::open(path)?);
         let header = Header::parse(file.bytes());
@@ -47,11 +57,13 @@ impl NcsFile {
         header::SIZE + k * RECORD
     }
 
+    /// µs timestamp of record `k`.
     pub fn timestamp(&self, k: usize) -> u64 {
         let a = self.at(k);
         u64::from_le_bytes(self.file.bytes()[a..a + 8].try_into().expect("8 bytes"))
     }
 
+    /// Valid samples in record `k` (at most [`BLOCK`]).
     pub fn valid(&self, k: usize) -> u32 {
         let a = self.at(k) + 16;
         u32::from_le_bytes(self.file.bytes()[a..a + 4].try_into().expect("4 bytes")).min(BLOCK as u32)
@@ -116,6 +128,7 @@ impl NcsFile {
 
 /// One section of a stream of `.ncs` channels (one file per channel).
 pub struct NcsRecording {
+    /// Description of the stream section.
     pub info: RecordingInfo,
     files: Vec<Arc<MappedFile>>,
     section: Section,
@@ -125,6 +138,7 @@ pub struct NcsRecording {
 }
 
 impl NcsRecording {
+    /// A recording over `section` of `files` (one per channel); `reference` gives the valid counts.
     pub fn new(info: RecordingInfo, files: Vec<Arc<MappedFile>>, reference: &NcsFile, section: Section) -> Self {
         let full = (section.first..section.last).all(|k| reference.valid(k) as usize == BLOCK);
         let offsets = (!full).then(|| {

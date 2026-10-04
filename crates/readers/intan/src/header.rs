@@ -10,9 +10,12 @@
 
 use nc_base::{Error, Result};
 
+/// First 4 bytes of an RHD file.
 pub const RHD_MAGIC: u32 = 0xC691_2702;
+/// First 4 bytes of an RHS file.
 pub const RHS_MAGIC: u32 = 0xD691_27AC;
 
+/// RHD or RHS.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     /// RHD2000 / RHD USB interface / Recording Controller.
@@ -24,18 +27,23 @@ pub enum Kind {
 /// What a channel carries (the header's `signal_type`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
+    /// Headstage amplifier (electrode) channel.
     Amplifier,
     /// RHD: headstage auxiliary input (accelerometer…), sampled at a quarter of the rate.
     Aux,
     /// RHD: headstage supply voltage, once per block.
     Supply,
+    /// Board analog inputs.
     AnalogIn,
     /// RHS: board analog outputs.
     AnalogOut,
+    /// Board digital inputs.
     DigitalIn,
+    /// Board digital outputs.
     DigitalOut,
 }
 
+/// One enabled channel of the header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Channel {
     /// `A-000`, `A-AUX1`, `ANALOG-IN-1`, `DIGITAL-IN-01`.
@@ -44,6 +52,7 @@ pub struct Channel {
     pub custom: String,
     /// Index within its signal group; the bit of a digital channel.
     pub native_order: u16,
+    /// What it carries.
     pub signal: Signal,
     /// Port of the signal group (`A`…`H`) or `board`.
     pub group: String,
@@ -51,16 +60,22 @@ pub struct Channel {
     pub impedance_ohms: f32,
 }
 
+/// A parsed RHD / RHS header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Header {
+    /// RHD or RHS.
     pub kind: Kind,
+    /// File format version (major, minor).
     pub version: (i16, i16),
+    /// Amplifier sample rate (Hz).
     pub sample_rate: f64,
+    /// The three user notes.
     pub notes: Vec<String>,
     /// RHD: temperature sensor channels saved per block.
     pub temp_sensors: usize,
     /// RHD: decides the board ADC scale (0, 1 or 13).
     pub board_mode: i16,
+    /// Reference channel name (≥ 2.0; empty when not recorded).
     pub reference: String,
     /// RHS: DC amplifier data saved next to the amplifier data.
     pub dc_saved: bool,
@@ -68,6 +83,7 @@ pub struct Header {
     pub stim_step: f64,
     /// Filter settings, for the record.
     pub bandwidth: (f32, f32),
+    /// DSP high-pass cutoff (Hz), when enabled.
     pub dsp_cutoff: Option<f32>,
     /// Enabled channels, in header order.
     pub channels: Vec<Channel>,
@@ -84,10 +100,12 @@ impl Header {
         }
     }
 
+    /// Channels carrying `signal`.
     pub fn of(&self, signal: Signal) -> impl Iterator<Item = &Channel> {
         self.channels.iter().filter(move |c| c.signal == signal)
     }
 
+    /// Number of channels carrying `signal`.
     pub fn count(&self, signal: Signal) -> usize {
         self.of(signal).count()
     }
@@ -142,6 +160,7 @@ pub fn kind_of(bytes: &[u8]) -> Option<Kind> {
     }
 }
 
+/// Parses the header at the start of `bytes`.
 pub fn parse(bytes: &[u8]) -> Result<Header> {
     let kind = kind_of(bytes).ok_or_else(|| Error::format("intan", "not an RHD / RHS file (magic number)"))?;
     let mut c = Cursor { bytes, at: 4 };

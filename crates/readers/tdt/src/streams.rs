@@ -15,6 +15,7 @@ use nc_base::codec::decode_into;
 use nc_base::mapped::MappedFile;
 use nc_core::{check_read, Calibration, ChannelInfo, Error, MemoryOrder, Recording, RecordingInfo, Result, SampleType, SignalKind};
 
+/// A TEV stream store: fixed-size packets per channel, memory-mapped.
 pub struct TdtStream {
     info: RecordingInfo,
     tev: Arc<MappedFile>,

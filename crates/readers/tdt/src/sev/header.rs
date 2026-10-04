@@ -16,28 +16,34 @@
 
 use nc_base::{Error, Result};
 
+/// Bytes of a SEV header.
 pub const HEADER_BYTES: usize = 40;
 /// Assumed rate of headerless (v0) files, as in TDT's reader.
 pub const V0_SAMPLE_RATE: f64 = 24_414.0625;
 
-/// Data format code 8: RS4 single-unit (high 16 bits) + LFP (low 16 bits) in one int32 word.
-/// The header's format field is masked to 3 bits (as TDT's reader does), so this code never
-/// comes from a SEV header; the block's `.Tbk` (`DataFormat=8`) declares it.
+// Data format code 8: RS4 single-unit (high 16 bits) + LFP (low 16 bits) in one int32 word.
+// The header's format field is masked to 3 bits (as TDT's reader does), so this code never
+// comes from a SEV header; the block's `.Tbk` (`DataFormat=8`) declares it.
 
+/// A parsed SEV header.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SevHeader {
+    /// Header version (0–3).
     pub version: u8,
     /// From the header (v3+) — otherwise take it from the file name.
     pub event_name: Option<String>,
     /// From the header (v1+).
     pub channel: Option<u16>,
+    /// Channels of the store (v1+).
     pub total_channels: Option<u16>,
     /// TDT data format code (0 f32, 1 i32, 2 i16, 3 i8, 4 f64, 5 i64).
     pub format: u8,
+    /// Samples per second.
     pub sample_rate: f64,
 }
 
 impl SevHeader {
+    /// Parses the 40-byte header at the start of `b`.
     pub fn parse(b: &[u8]) -> Result<Self> {
         if b.len() < HEADER_BYTES {
             return Err(Error::format("tdt-sev", "file shorter than the 40-byte header"));

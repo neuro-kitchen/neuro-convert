@@ -2,15 +2,20 @@
 //! `<STORE>…_log.txt` holds lines like `recording started at sample: 2` and
 //! `gap detected. last saved sample: 1000, new saved sample: 1100`.
 
+/// One parsed log file.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SevLog {
+    /// Store name (first four characters of the file name).
     pub store: String,
+    /// Hour file number (`-<n>h`), 0 for the first.
     pub hour: u32,
+    /// Sample where recording started.
     pub start_sample: Option<u64>,
     /// (last saved sample, next saved sample) for every gap.
     pub gaps: Vec<(u64, u64)>,
 }
 
+/// Parses log `text` of file `file_name`.
 pub fn parse(file_name: &str, text: &str) -> SevLog {
     let mut log = SevLog { store: file_name.chars().take(4).collect(), ..Default::default() };
     log.hour = file_name.rfind('-').and_then(|i| file_name[i + 1..].split('h').next()?.parse().ok()).unwrap_or(0);

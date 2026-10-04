@@ -8,17 +8,20 @@ use std::path::Path;
 /// `Summary.txt` flattened to `Section.Key` → value (e.g. `Versions.Synapse` → `53575`).
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TinSummary {
+    /// `Section.Key` → value.
     pub fields: BTreeMap<String, String>,
     /// Every file in the archive.
     pub entries: Vec<String>,
 }
 
 impl TinSummary {
+    /// Value of `Section.Key`.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.fields.get(key).map(String::as_str)
     }
 }
 
+/// Reads `Summary.txt` from the `.tin` zip at `path`; `None` when it cannot.
 pub fn read_tin(path: &Path) -> Option<TinSummary> {
     let file = std::fs::File::open(path).ok()?;
     let mut zip = zip::ZipArchive::new(file).ok()?;

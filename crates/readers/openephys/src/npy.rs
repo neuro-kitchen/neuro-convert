@@ -6,6 +6,7 @@ use std::path::Path;
 
 use nc_base::{Error, Result};
 
+/// A parsed `.npy` file held in memory.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Npy {
     /// `descr` of the header, e.g. `<i8`, `<f8`, `|S513`.
@@ -22,11 +23,13 @@ fn err(path: &Path, msg: impl Into<String>) -> Error {
 }
 
 impl Npy {
+    /// Reads and parses the file at `path`.
     pub fn load(path: &Path) -> Result<Self> {
         let bytes = std::fs::read(path).map_err(|e| Error::io(path, e))?;
         Self::parse(&bytes).map_err(|m| err(path, m))
     }
 
+    /// Parses `.npy` bytes.
     pub fn parse(bytes: &[u8]) -> std::result::Result<Self, String> {
         if bytes.len() < 10 || &bytes[..6] != b"\x93NUMPY" {
             return Err("not a .npy file".into());

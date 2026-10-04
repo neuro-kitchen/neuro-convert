@@ -26,34 +26,53 @@ pub struct Wave {
     pub bytes: u8,
     /// Samples per waveform (0: fill the packet).
     pub width: u16,
+    /// Front-end bank (1 = A, …).
     pub connector: u8,
+    /// Pin on the bank.
     pub pin: u8,
 }
 
 /// A packet's place in the file.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Packet {
+    /// Timestamp in ticks of the file's resolution.
     pub timestamp: u64,
+    /// Packet id: 0 digital / serial input, 1–2048 electrode spikes, 0xFFFF comments, …
     pub id: u16,
+    /// Byte offset of the packet.
     pub offset: usize,
+    /// Clock epoch (0 until the first clock reset).
     pub epoch: usize,
 }
 
+/// A `.nev` file: header, extended headers and the index of its packets, memory-mapped.
 #[derive(Debug)]
 pub struct Nev {
+    /// The mapped file.
     pub file: Arc<MappedFile>,
+    /// File spec (`2.3`, `3.0`).
     pub spec: String,
+    /// Timestamp ticks per second.
     pub timestamp_resolution: u64,
+    /// UTC time origin `[year, month, weekday, day, hour, minute, second, ms]`.
     pub origin: [u16; 8],
+    /// Application that wrote the file.
     pub application: String,
+    /// Header comment.
     pub comment: String,
     /// Waveforms are int16 whatever `NEUEVWAV` says (header flag bit 0).
     pub all_int16: bool,
+    /// Bytes per packet.
     pub packet_bytes: usize,
+    /// Waveform settings per electrode id.
     pub waves: BTreeMap<u16, Wave>,
+    /// Electrode labels (`NEUEVLBL`) per id.
     pub labels: BTreeMap<u16, String>,
+    /// Every packet, in file order.
     pub packets: Vec<Packet>,
+    /// Number of clock epochs.
     pub epochs: usize,
+    /// Problems met while indexing.
     pub warnings: Vec<String>,
 }
 
@@ -71,10 +90,12 @@ fn u32_at(b: &[u8], at: usize) -> u32 {
 }
 
 impl Nev {
+    /// Bytes of a packet timestamp (8 from spec 3.0, else 4).
     pub fn ts_bytes(&self) -> usize {
         if self.spec.starts_with('3') { 8 } else { 4 }
     }
 
+    /// Maps the file at `path`, parses its headers and indexes its packets.
     pub fn open(path: &Path) -> Result<Self> {
         let file = Arc::new(MappedFile::open(path)?);
         let mapped = file.clone();
@@ -208,9 +229,11 @@ impl Nev {
 
 /// Spike waveforms of a NEV, read from their packets.
 pub struct NevWaveforms {
+    /// The file the packets are in.
     pub nev: Arc<Nev>,
     /// (packet offset, bytes per sample, volts per bit) per snippet.
     pub spikes: Vec<(usize, u8, f64)>,
+    /// Samples per waveform.
     pub samples: usize,
 }
 

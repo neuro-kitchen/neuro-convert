@@ -8,6 +8,7 @@ use std::sync::Arc;
 use nc_base::mapped::MappedFile;
 use nc_core::{check_read, Recording, RecordingInfo, Result};
 
+/// A subset of the columns of a `.bin` file (int16, time-major), memory-mapped.
 pub struct BinRecording {
     info: RecordingInfo,
     file: Arc<MappedFile>,

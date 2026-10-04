@@ -6,7 +6,9 @@ use std::collections::BTreeMap;
 /// notes (`Note-<n>: <clock> [<button>] "<text>"`, text may span lines) and any other text.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SynapseNotes {
+    /// Header fields (Experiment, Subject, User, Start, Stop).
     pub fields: BTreeMap<String, String>,
+    /// Runtime notes, in order.
     pub entries: Vec<NoteEntry>,
     /// Lines that are neither header fields nor notes.
     pub notes: Vec<String>,
@@ -15,11 +17,13 @@ pub struct SynapseNotes {
 /// One runtime note.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct NoteEntry {
+    /// `n` of `Note-<n>`.
     pub index: u32,
     /// Wall-clock time as written, e.g. `12:09:59pm`.
     pub clock: String,
     /// Note button pressed (`sleep`); `None` for typed notes (`[none]`) or no buttons.
     pub button: Option<String>,
+    /// Typed text (may be empty).
     pub text: String,
 }
 
@@ -36,6 +40,7 @@ impl NoteEntry {
 
 const HEADER_KEYS: [&str; 5] = ["Experiment", "Subject", "User", "Start", "Stop"];
 
+/// Parses `Notes.txt` text.
 pub fn parse_notes(text: &str) -> SynapseNotes {
     let mut out = SynapseNotes::default();
     let mut open: Option<NoteEntry> = None; // a note whose quoted text continues on later lines
@@ -127,11 +132,13 @@ pub struct StoreDescription {
 /// `StoresListing.txt`: stores grouped by the object that wrote them, then a flat listing.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct StoresListing {
+    /// Store descriptions, by store name.
     pub stores: BTreeMap<String, StoreDescription>,
     /// Hardware objects (`RZ2(1) - RZn Processor`, `IZV10(1) - IZV`), i.e. names with a unit index.
     pub hardware: Vec<(String, String)>,
 }
 
+/// Parses `StoresListing.txt` text.
 pub fn parse_stores_listing(text: &str) -> StoresListing {
     let mut out = StoresListing::default();
     let (mut object, mut object_type) = (String::new(), String::new());

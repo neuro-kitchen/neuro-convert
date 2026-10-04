@@ -22,6 +22,8 @@
 //!
 //! Not yet: binary-format spikes, OneBox ADC streams, Open Ephys's own NWB format (already NWB).
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-openephys`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -49,6 +51,7 @@ use nc_core::{
 use npy::Npy;
 use serde_json::Value;
 
+/// The Open Ephys reader (binary and legacy formats).
 pub struct OpenEphys;
 
 /// Recording folders (with a `structure.oebin`) at or below `path`, sorted.

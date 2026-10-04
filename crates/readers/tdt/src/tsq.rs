@@ -12,20 +12,31 @@ use std::collections::BTreeMap;
 
 use super::codes::{self, StoreKind};
 
+/// Bytes per TSQ record.
 pub const RECORD_BYTES: usize = 40;
 /// Header words at the start of every data packet.
 const HEADER_WORDS: u32 = 10;
 
+/// One 40-byte TSQ record.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Record {
+    /// Packet size in 32-bit words, header included.
     pub size_words: u32,
+    /// Event type code ([`codes`]).
     pub evtype: u32,
+    /// Store name (4 bytes).
     pub name: [u8; 4],
+    /// 1-based channel.
     pub chan: u16,
+    /// Online sort code.
     pub sortcode: u16,
+    /// Unix time in seconds.
     pub timestamp: f64,
+    /// TEV offset, or the value (as f64 bits) for epocs and scalars.
     pub offset: u64,
+    /// Data format code.
     pub format: u32,
+    /// Sample rate (Hz).
     pub frequency: f32,
     /// Position among records with a non-empty name field (TDT drops the others as bad
     /// headers); `.SortResult` files are indexed by it.
@@ -33,6 +44,7 @@ pub struct Record {
 }
 
 impl Record {
+    /// Parses a record from its 40 bytes.
     pub fn parse(b: &[u8]) -> Self {
         let u32_at = |i: usize| u32::from_le_bytes(b[i..i + 4].try_into().unwrap());
         Self {
@@ -77,10 +89,15 @@ pub fn store_name(name: &[u8; 4]) -> String {
 /// Everything the TSQ says about one store.
 #[derive(Debug, Clone)]
 pub struct StoreIndex {
+    /// Store name.
     pub name: String,
+    /// What it holds.
     pub kind: StoreKind,
+    /// Event type code of its records.
     pub evtype: u32,
+    /// Data format code.
     pub format: u32,
+    /// Sample rate (Hz).
     pub frequency: f64,
     /// Payload bytes per packet (streams, snips).
     pub packet_bytes: u64,
@@ -97,13 +114,18 @@ pub struct StoreIndex {
 pub struct TsqIndex {
     /// Unix time of the block start marker.
     pub start: f64,
+    /// Unix time of the stop marker; `None` when the block did not end cleanly.
     pub stop: Option<f64>,
+    /// Every store, by name.
     pub stores: BTreeMap<String, StoreIndex>,
+    /// Records in the file.
     pub record_count: usize,
+    /// Problems met while parsing.
     pub warnings: Vec<String>,
 }
 
 impl TsqIndex {
+    /// Parses a whole `.tsq` file.
     pub fn parse(bytes: &[u8]) -> Self {
         let mut idx = TsqIndex::default();
         let whole = bytes.len() / RECORD_BYTES;

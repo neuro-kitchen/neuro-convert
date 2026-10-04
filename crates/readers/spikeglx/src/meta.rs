@@ -19,12 +19,15 @@ pub enum StreamType {
     Obx,
 }
 
+/// A parsed `.meta` file: `key=value` lines (`~` of table keys dropped).
 #[derive(Debug, Clone, Default)]
 pub struct Meta {
+    /// Every key and its raw value.
     pub fields: BTreeMap<String, String>,
 }
 
 impl Meta {
+    /// Parses `.meta` text.
     pub fn parse(text: &str) -> Self {
         let fields = text
             .lines()
@@ -34,6 +37,7 @@ impl Meta {
         Self { fields }
     }
 
+    /// Reads and parses the file at `path`; fails when it has no `nSavedChans`.
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
         let meta = Self::parse(&text);
@@ -43,10 +47,12 @@ impl Meta {
         Ok(meta)
     }
 
+    /// Value of `key`.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.fields.get(key).map(String::as_str)
     }
 
+    /// Value of `key` as a number.
     pub fn f64(&self, key: &str) -> Option<f64> {
         self.get(key)?.parse().ok()
     }
@@ -59,6 +65,7 @@ impl Meta {
         self.require(key)?.parse().map_err(|_| Error::format("spikeglx", format!("meta {key} is not a number")))
     }
 
+    /// `typeThis`: imec, nidq or obx.
     pub fn stream_type(&self) -> Result<StreamType> {
         match self.require("typeThis")? {
             "imec" => Ok(StreamType::Imec),
@@ -68,6 +75,7 @@ impl Meta {
         }
     }
 
+    /// Sample rate of this stream (`imSampRate`, `niSampRate`, `obSampRate`).
     pub fn sample_rate(&self) -> Result<f64> {
         match self.stream_type()? {
             StreamType::Imec => self.require_f64("imSampRate"),
@@ -76,6 +84,7 @@ impl Meta {
         }
     }
 
+    /// `nSavedChans`: columns per sample in the `.bin`.
     pub fn saved_channels(&self) -> Result<usize> {
         self.require("nSavedChans")?.parse().map_err(|_| Error::format("spikeglx", "nSavedChans is not a number"))
     }

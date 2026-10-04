@@ -2,20 +2,30 @@
 
 use nc_base::SampleType;
 
+/// Unknown event.
 pub const EVTYPE_UNKNOWN: u32 = 0x0000_0000;
+/// Strobe (epoc) onset.
 pub const EVTYPE_STRON: u32 = 0x0000_0101;
+/// Strobe (epoc) offset.
 pub const EVTYPE_STROFF: u32 = 0x0000_0102;
+/// Scalar values.
 pub const EVTYPE_SCALAR: u32 = 0x0000_0201;
+/// Stream packet.
 pub const EVTYPE_STREAM: u32 = 0x0000_8101;
+/// Snippet.
 pub const EVTYPE_SNIP: u32 = 0x0000_8201;
+/// Mark (block start / stop).
 pub const EVTYPE_MARK: u32 = 0x0000_8801;
 /// Set on streams whose values were stored unscaled ("use channel factors").
 pub const EVTYPE_UCF: u32 = 0x0000_0010;
+/// Bits that identify the event type (flags such as [`EVTYPE_UCF`] removed).
 pub const EVTYPE_MASK: u32 = 0x0000_FF0F;
+/// Bits never set in a valid event type.
 pub const EVTYPE_INVALID_MASK: u32 = 0xFFFF_0000;
 
 /// Codes stored in the name field of the block start / stop markers.
 pub const EVMARK_STARTBLOCK: u32 = 0x0001;
+/// Stop marker code.
 pub const EVMARK_STOPBLOCK: u32 = 0x0002;
 
 /// What a store holds.
@@ -34,6 +44,7 @@ pub enum StoreKind {
 }
 
 impl StoreKind {
+    /// The kind of a store from its event type code.
     pub fn from_evtype(evtype: u32) -> Option<Self> {
         match evtype {
             EVTYPE_STRON | EVTYPE_MARK => Some(StoreKind::EpocOnset),

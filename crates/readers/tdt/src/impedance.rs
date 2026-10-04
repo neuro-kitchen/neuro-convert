@@ -6,6 +6,7 @@ use std::path::Path;
 use nc_base::text::read_text;
 use nc_core::Table;
 
+/// A Synapse impedance export (`*.csv`) as a table; `None` when it is not one.
 pub fn read_csv_table(path: &Path) -> Option<Table> {
     let text = read_text(path)?;
     let mut lines = text.lines().filter(|l| !l.trim().is_empty());
