@@ -21,6 +21,7 @@ pub enum Maturity {
 }
 
 impl Maturity {
+    /// Lowercase name (`verified`).
     pub fn label(&self) -> &'static str {
         match self {
             Maturity::Verified => "verified",
@@ -47,6 +48,7 @@ pub trait Reader: Send + Sync {
     /// The reader's own version (its crate's `VERSION`), recorded in each session's provenance
     /// so a conversion can be traced to the reader code that read it.
     fn version(&self) -> &'static str;
+    /// One line: what the format is.
     fn description(&self) -> &'static str;
     /// What a user selects to open this format, in a sentence (shown by front ends).
     fn opens(&self) -> &'static str {
@@ -67,13 +69,16 @@ pub trait Reader: Send + Sync {
     fn containers(&self, _path: &Path) -> Vec<String> {
         Vec::new()
     }
+    /// Reads `path` into a [`Session`]. Continuous data and snippet waveforms are not read here, only served on demand.
     fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session>;
 }
 
 /// A reader's claim on a path.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
+    /// The reader's [`Reader::name`].
     pub format: &'static str,
+    /// Format version found in the files, when they record one.
     pub version: Option<String>,
     /// 0..1; the highest claim wins.
     pub confidence: f32,

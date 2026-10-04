@@ -1,9 +1,13 @@
+//! Events: TTL lines, epocs, markers, text notes and sampled scalar values.
+
 use serde::{Deserialize, Serialize};
 
 /// Timestamped events: TTL/epoc onsets (with optional offsets) or sampled scalar values.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct EventSeries {
+    /// Name inside its session.
     pub name: String,
+    /// What the events mark.
     pub description: String,
     /// Seconds from the session start, ascending.
     pub onsets: Vec<f64>,
@@ -19,10 +23,12 @@ pub struct EventSeries {
 }
 
 impl EventSeries {
+    /// Number of events.
     pub fn len(&self) -> usize {
         self.onsets.len()
     }
 
+    /// `true` without events.
     pub fn is_empty(&self) -> bool {
         self.onsets.is_empty()
     }

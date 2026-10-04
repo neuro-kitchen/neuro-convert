@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 /// Contacts that share a device and an anatomical location (a probe, a shank, an EMG grid).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct ElectrodeGroup {
+    /// Group name, unique in the session.
     pub name: String,
+    /// What the group is (probe model, grid size, …).
     pub description: String,
     /// Anatomical location (`unknown` when not known).
     pub location: String,
@@ -20,7 +22,9 @@ pub struct ElectrodeGroup {
 /// One channel of a continuous recording: recording name and 0-based channel index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ChannelRef {
+    /// Name of the recording.
     pub recording: String,
+    /// 0-based channel index in that recording.
     pub channel: usize,
 }
 
@@ -38,5 +42,6 @@ pub struct Electrode {
     pub location: Option<String>,
     /// Position relative to the probe, in µm (x, y, z).
     pub position_um: Option<[f32; 3]>,
+    /// Impedance magnitude in ohms, when measured.
     pub impedance_ohms: Option<f32>,
 }

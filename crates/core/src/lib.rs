@@ -14,6 +14,8 @@
 //! Writers read typed fields only; `metadata` maps on recordings and sessions are reader extras
 //! for reports.
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-core`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

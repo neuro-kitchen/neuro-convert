@@ -9,22 +9,32 @@ use serde::{Deserialize, Serialize};
 
 use nc_base::{Error, Result};
 
+/// The metadata file: read with [`load`](Self::load) or [`parse`](Self::parse), merged into a session
+/// with [`apply`](Self::apply), consulted by the NWB plan.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct MetadataFile {
+    /// Session description, time, people, lab.
     pub session: SessionSection,
+    /// The animal or person recorded.
     pub subject: SubjectSection,
+    /// Groups to add or replace (by name).
     pub electrode_groups: Vec<ElectrodeGroupSpec>,
+    /// Continuous streams, by source name or `*`.
     pub streams: BTreeMap<String, StreamSpec>,
+    /// Event series, by source name or `*`.
     pub events: BTreeMap<String, ItemSpec>,
+    /// Tables, by source name or `*`.
     pub tables: BTreeMap<String, ItemSpec>,
     /// Snippet (spike waveform) stores, by source name or `*`.
     pub snippets: BTreeMap<String, SnippetSpec>,
 }
 
+/// `session:`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SessionSection {
+    /// One or two sentences (NWB requires it).
     pub description: Option<String>,
     /// Unique id; a UUID is generated when absent.
     pub identifier: Option<String>,
@@ -32,16 +42,23 @@ pub struct SessionSection {
     pub start_time: Option<String>,
     /// Zone of the recorded local start time, e.g. `-05:00` (used when `start_time` is absent).
     pub timezone: Option<String>,
+    /// What the experiment is about.
     pub experiment_description: Option<String>,
+    /// `Last, First` per person.
     pub experimenters: Vec<String>,
+    /// Lab name.
     pub lab: Option<String>,
+    /// Institution name.
     pub institution: Option<String>,
+    /// Search keywords.
     pub keywords: Vec<String>,
 }
 
+/// `subject:`
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SubjectSection {
+    /// Subject id; default: the id the recording stores.
     pub id: Option<String>,
     /// Latin binomial, e.g. `Rattus norvegicus`.
     pub species: Option<String>,
@@ -49,14 +66,19 @@ pub struct SubjectSection {
     pub sex: Option<String>,
     /// ISO 8601 duration, e.g. `P90D`.
     pub age: Option<String>,
+    /// Strain, e.g. `Sprague Dawley`.
     pub strain: Option<String>,
+    /// Free text.
     pub description: Option<String>,
 }
 
+/// One entry of `electrode_groups:`; replaces a reader group of the same name.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ElectrodeGroupSpec {
+    /// Group name.
     pub name: String,
+    /// What the group is.
     pub description: String,
     /// Anatomical location (e.g. `diaphragm`).
     pub location: String,
@@ -71,6 +93,7 @@ pub struct ElectrodeGroupSpec {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ImpedanceSpec {
+    /// Name of a session table holding the impedances.
     pub table: String,
     /// Column prefix before the channel number (default `R`).
     pub prefix: Option<String>,
@@ -88,15 +111,20 @@ pub enum StreamType {
     Timeseries,
 }
 
+/// How a continuous stream is exported (`streams.<name>`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct StreamSpec {
+    /// `false` leaves the stream out.
     pub include: Option<bool>,
     /// Output name (defaults to the source name, made safe).
     pub name: Option<String>,
+    /// `type:` electrical or timeseries; `None`: electrical when every channel has an electrode.
     #[serde(rename = "type")]
     pub kind: Option<StreamType>,
+    /// Group whose electrodes the channels are (one electrode per channel).
     pub electrode_group: Option<String>,
+    /// Output description.
     pub description: Option<String>,
     /// Unit of `TimeSeries` data (electrical series are always volts).
     pub unit: Option<String>,
@@ -109,38 +137,51 @@ pub struct StreamSpec {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct SnippetSpec {
+    /// `false` leaves the store out.
     pub include: Option<bool>,
     /// Output name prefix (defaults to the source name, made safe); series are `<name>_ch<c>`.
     pub name: Option<String>,
+    /// Output description.
     pub description: Option<String>,
+    /// Group whose electrodes the snippet channels are.
     pub electrode_group: Option<String>,
     /// Multiplier from stored snippet values to volts.
     pub conversion: Option<f64>,
 }
 
+/// How an event series or a table is exported.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ItemSpec {
+    /// `false` leaves the item out.
     pub include: Option<bool>,
+    /// Output name (default: the source name, made safe).
     pub name: Option<String>,
+    /// Output description.
     pub description: Option<String>,
 }
 
 /// The kinds of source items a metadata file can include or leave out.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ItemKind {
+    /// Continuous stream.
     Stream,
+    /// Event series.
     Event,
+    /// Table.
     Table,
+    /// Snippet store.
     Snippet,
 }
 
 impl MetadataFile {
+    /// Reads and parses the YAML file at `path`.
     pub fn load(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
         Self::parse(&text).map_err(|e| Error::format("metadata", format!("{}: {e}", path.display())))
     }
 
+    /// Parses YAML text; unknown keys are errors.
     pub fn parse(text: &str) -> std::result::Result<Self, serde_yaml_ng::Error> {
         serde_yaml_ng::from_str(text)
     }
@@ -154,6 +195,7 @@ impl MetadataFile {
         if text.trim() == "{}" { String::new() } else { text }
     }
 
+    /// Writes [`to_yaml`](Self::to_yaml) to `path`.
     pub fn save(&self, path: &Path) -> Result<()> {
         std::fs::write(path, self.to_yaml()).map_err(|e| Error::io(path, e))
     }
@@ -225,14 +267,17 @@ impl MetadataFile {
         }
     }
 
+    /// The spec for event series `name`: its own entry over the `"*"` default.
     pub fn event(&self, name: &str) -> ItemSpec {
         item(&self.events, name)
     }
 
+    /// The spec for table `name`: its own entry over the `"*"` default.
     pub fn table(&self, name: &str) -> ItemSpec {
         item(&self.tables, name)
     }
 
+    /// The spec for snippet store `name`: its own entry over the `"*"` default.
     pub fn snippet(&self, name: &str) -> SnippetSpec {
         let own = self.snippets.get(name).cloned().unwrap_or_default();
         let def = self.snippets.get("*").cloned().unwrap_or_default();

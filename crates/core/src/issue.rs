@@ -17,17 +17,26 @@ pub enum Target {
     /// A metadata field, by its path in the metadata file (`session.description`,
     /// `session.timezone`, `subject.species`, …).
     Field(String),
+    /// A stream, by source name.
     Stream(String),
+    /// An event series, by source name.
     Event(String),
+    /// A table, by source name.
     Table(String),
+    /// A snippet store, by source name.
     Snippet(String),
+    /// An electrode group, by name.
     ElectrodeGroup(String),
 }
 
+/// A problem found while checking a session or planning an output.
 #[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Issue {
+    /// Whether it blocks writing.
     pub level: Level,
+    /// One sentence for the user.
     pub message: String,
+    /// Where it is fixed, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<Target>,
     /// Only matters for an upload to the DANDI archive (the NWB file is valid without it).
@@ -36,14 +45,17 @@ pub struct Issue {
 }
 
 impl Issue {
+    /// A blocking issue.
     pub fn error(message: impl Into<String>) -> Self {
         Self { level: Level::Error, message: message.into(), target: None, dandi: false }
     }
 
+    /// A non-blocking issue.
     pub fn warning(message: impl Into<String>) -> Self {
         Self { level: Level::Warning, message: message.into(), target: None, dandi: false }
     }
 
+    /// Sets where the issue is fixed.
     pub fn at(mut self, target: Target) -> Self {
         self.target = Some(target);
         self

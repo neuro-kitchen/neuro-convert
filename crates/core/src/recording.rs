@@ -1,3 +1,5 @@
+//! Continuous signals: the [`Recording`] trait and its description.
+
 use std::collections::BTreeMap;
 use std::ops::Range;
 
@@ -8,12 +10,16 @@ use nc_base::{Error, MemoryOrder, Result, SampleType};
 /// Name and scaling of one stored channel: `value = stored * gain + offset`, in `unit`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ChannelInfo {
+    /// Channel name as the source records it.
     pub name: String,
+    /// Multiplier from stored value to `unit`.
     pub gain: f64,
+    /// Added after the gain.
     pub offset: f64,
 }
 
 impl ChannelInfo {
+    /// A channel with gain 1 and offset 0.
     pub fn unity(name: impl Into<String>) -> Self {
         Self { name: name.into(), gain: 1.0, offset: 0.0 }
     }
@@ -40,7 +46,10 @@ pub enum Calibration {
     /// The source records a scale it does not apply reliably, so values are stored units; a
     /// writer needs a user-supplied conversion to reach physical units. `note` says what the
     /// source records (e.g. `TDT scale "Milli"`).
-    Unknown { note: String },
+    Unknown {
+        /// What the source records about the scale.
+        note: String,
+    },
 }
 
 /// Format-independent description of one continuous multi-channel signal.
@@ -48,19 +57,25 @@ pub enum Calibration {
 pub struct RecordingInfo {
     /// Name inside its session (e.g. a TDT store name).
     pub name: String,
+    /// What the signal is.
     pub description: String,
+    /// One entry per channel, in stored order.
     pub channels: Vec<ChannelInfo>,
     /// Samples per channel.
     pub samples: u64,
+    /// Samples per second.
     pub sample_rate: f64,
     /// Seconds from the session start to sample 0.
     pub start_time: f64,
     /// Physical unit after scaling (`V`, `uV`, `a.u.`, …).
     pub unit: String,
+    /// Whether `unit` can be trusted.
     pub calibration: Calibration,
+    /// Electrode signal or other.
     pub kind: SignalKind,
     /// How the source stores samples (reads always return channel-major `f32`).
     pub stored_as: SampleType,
+    /// How samples lie in the file.
     pub order: MemoryOrder,
     /// Short label of the source storage, for display (e.g. `tev`, `sev v3`); empty if none.
     pub storage: String,
@@ -70,10 +85,12 @@ pub struct RecordingInfo {
 }
 
 impl RecordingInfo {
+    /// Number of channels.
     pub fn channel_count(&self) -> usize {
         self.channels.len()
     }
 
+    /// Length in seconds.
     pub fn duration(&self) -> f64 {
         if self.sample_rate > 0.0 { self.samples as f64 / self.sample_rate } else { 0.0 }
     }
@@ -86,6 +103,7 @@ impl RecordingInfo {
 
 /// Read-only continuous signal, read in bounded chunks so hours-long files never sit in memory.
 pub trait Recording: Send + Sync {
+    /// Name, channels, rate, unit and storage of the signal.
     fn info(&self) -> &RecordingInfo;
 
     /// Reads `samples` of every channel in `channels` into `out`, channel-major and scaled:
