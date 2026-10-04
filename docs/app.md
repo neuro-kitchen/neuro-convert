@@ -12,6 +12,8 @@ where it is fixed.
 The toolbar has only Open recording, Load / Save metadata and the theme switch.
 
 ### ① Source
+<!-- screenshot: images/app/source.png; callouts: toolbar, step bar, Open recording, recent recordings, What can be opened -->
+
 **Open recording…** (Ctrl+O) picks the recording's folder; Ctrl+Shift+O picks a single file. You
 can also drop a folder or file on the window, or start the app with a path. The page shows recent
 recordings, the recordings to choose from when a folder holds several (TDT tank blocks, SpikeGLX
@@ -21,6 +23,8 @@ description, what to select, and its maturity (*verified*: checked against a ref
 real recordings).
 
 ### ② Contents
+<!-- screenshot: images/app/contents.png; callouts: Recording tree, include checkbox, issue mark, middle heading, preview, Settings panel, panel toggles -->
+
 Three regions. The middle one's heading says what is selected, its facts and where it goes (e.g.
 *Stream HDEG · 32 ch · 24 414 Hz · 47 min 12 s · V · TimeSeries*). Each side panel has a toggle
 beside its title; hiding the panel hides the title, and the toggle stays at the same edge (at the
@@ -47,6 +51,8 @@ end of the middle heading) to show it again. The choice is remembered:
     give a physical scale).
 
 ### ③ Metadata
+<!-- screenshot: images/app/metadata.png; callouts: session fields, time zone, subject, More details, outlined field, DANDI switch -->
+
 The form is a centered column. Session: description, start time (date and time, preset to the recorded time; "Use the
 recorded time" undoes a change) and **time zone** (searchable list of UTC offsets with places;
 recording systems store local time). Subject: id, species (dropdown with common names; **Other…** to type one), sex,
@@ -61,6 +67,8 @@ remembered and offered next time. **Save metadata** (Ctrl+S) writes a YAML usabl
 recording. Comments in a loaded YAML are not kept when saving.
 
 ### ④ Review & convert
+<!-- screenshot: images/app/review.png; callouts: summary, issues with links, output and Format, Advanced, Convert, NWB structure panel -->
+
 What will be written (summary), the remaining issues with links to fix them, the output (default
 next to the recording; in builds with HDF5, **Format** chooses a Zarr folder `.nwb.zarr` or one
 HDF5 file `.nwb`) and **Advanced** (compression, chunks, check after
@@ -75,6 +83,8 @@ path written and where it comes from; click a row to open its item in Contents. 
 the store's name (editable) in the folder shown under it (**Choose…** to change both). **Copy diagnostics** puts versions, warnings, issues and the outcome on the clipboard.
 
 ## Preview
+<!-- screenshot: images/app/preview.png; callouts: stream / channels / lanes / markers dropdowns, traces, scale bar, channel bar, overview, probe map -->
+
 Dropdowns choose the **stream**, the **channels** (all, or one electrode group when a stream spans
 several), how many **lanes** are shown at once (4–64) and **markers** (an event series drawn as
 vertical lines); zoom − / + and **Gain**. A stream opens with its first second (the whole

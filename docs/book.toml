@@ -1,0 +1,15 @@
+[book]
+title = "neuro-convert"
+description = "Convert neurophysiology recordings to NWB (Zarr or HDF5)"
+language = "en"
+# The book's sources are this folder, so every page also reads as plain Markdown on GitHub.
+src = "."
+
+[build]
+# Built pages go to the workspace target/ (git-ignored): mdbook build docs → target/book
+build-dir = "../target/book"
+create-missing = false
+
+[output.html]
+git-repository-url = "https://github.com/neuro-kitchen/neuro-convert"
+edit-url-template = "https://github.com/neuro-kitchen/neuro-convert/edit/main/docs/{path}"

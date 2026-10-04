@@ -3,7 +3,7 @@
 A reader turns one family of recording files into neuro-convert's neutral model, a `Session`.
 Everything after that — metadata, the NWB plan, Zarr / HDF5 output, verification, the app — works
 for every format without knowing it. This guide is what you need to add one. Start from the
-template in [`templates/reader/`](../../templates/reader/) and look at the existing readers in
+template in [`templates/reader/`](https://github.com/neuro-kitchen/neuro-convert/tree/main/templates/reader) and look at the existing readers in
 `crates/readers/` (each has a page in [`docs/formats/`](../formats/)).
 
 ## 1. The pieces
