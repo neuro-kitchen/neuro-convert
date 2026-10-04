@@ -15,6 +15,7 @@ use std::path::{Path, PathBuf};
 /// One `.meta` and the parts of its name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetaFile {
+    /// The `.meta` file.
     pub path: PathBuf,
     /// `<run>_g<gate>` (everything before the trigger and stream tokens).
     pub run: String,
@@ -27,6 +28,7 @@ pub struct MetaFile {
 }
 
 impl MetaFile {
+    /// Splits a `.meta` path into its name parts; `None` for other files.
     pub fn parse(path: &Path) -> Option<Self> {
         if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("meta")) {
             return None;

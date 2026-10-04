@@ -21,18 +21,27 @@ use nc_core::{check_read, Error, Recording, RecordingInfo, Result};
 /// A channel of an NSx file.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Channel {
+    /// Electrode id.
     pub id: u32,
+    /// Channel label.
     pub label: String,
     /// Front-end bank (1 = A, 2 = B, …; 0 unknown) and pin.
     pub connector: u8,
+    /// Pin on the bank.
     pub pin: u8,
+    /// Smallest stored value.
     pub min_digital: i16,
+    /// Largest stored value.
     pub max_digital: i16,
+    /// Analog value of `min_digital`, in `units`.
     pub min_analog: i16,
+    /// Analog value of `max_digital`, in `units`.
     pub max_analog: i16,
+    /// `uV`, `mV` or `V`.
     pub units: String,
     /// High-pass and low-pass corners (mHz).
     pub high_pass_mhz: u32,
+    /// Low-pass corner (mHz).
     pub low_pass_mhz: u32,
 }
 
@@ -60,27 +69,36 @@ impl Channel {
 pub struct Part {
     /// Timestamp of the first sample (ticks of the file's timestamp resolution).
     pub timestamp: u64,
+    /// Samples in the part.
     pub samples: u64,
     /// Byte offset of the first sample's first channel.
     pub offset: usize,
 }
 
+/// An `.nsX` file: header, channels and data parts, memory-mapped.
 #[derive(Debug)]
 pub struct Nsx {
+    /// The mapped file.
     pub file: Arc<MappedFile>,
     /// `2.1`, `2.2`, `2.3`, `3.0`.
     pub spec: String,
+    /// Sampling group label (`30 kS/s`).
     pub label: String,
     /// Sample period in 1/30 000 s.
     pub period: u32,
+    /// Timestamp ticks per second.
     pub timestamp_resolution: u64,
     /// UTC `[year, month, weekday, day, hour, minute, second, ms]`.
     pub origin: Option<[u16; 8]>,
+    /// Channels, in stored order.
     pub channels: Vec<Channel>,
     /// Bytes from one sample to the next (channels × 2, or a whole PTP packet).
     pub stride: usize,
+    /// PTP layout: one packet per sample with its own timestamp.
     pub ptp: bool,
+    /// Runs of consecutive samples.
     pub parts: Vec<Part>,
+    /// Problems met while reading.
     pub warnings: Vec<String>,
 }
 
@@ -106,10 +124,12 @@ fn u64_at(b: &[u8], at: usize) -> u64 {
 }
 
 impl Nsx {
+    /// Samples per second.
     pub fn sample_rate(&self) -> f64 {
         30_000.0 / self.period.max(1) as f64
     }
 
+    /// Maps the file at `path` and parses its header and data blocks.
     pub fn open(path: &Path) -> Result<Self> {
         let file = Arc::new(MappedFile::open(path)?);
         let mapped = file.clone();
@@ -250,6 +270,7 @@ impl Nsx {
 
 /// Some channels of one part of an NSx file.
 pub struct NsxRecording {
+    /// Description of the recording.
     pub info: RecordingInfo,
     file: Arc<MappedFile>,
     offset: usize,
@@ -259,6 +280,7 @@ pub struct NsxRecording {
 }
 
 impl NsxRecording {
+    /// Channels `columns` of `part` of `nsx`.
     pub fn new(info: RecordingInfo, nsx: &Nsx, part: &Part, columns: Vec<usize>) -> Self {
         Self { info, file: nsx.file.clone(), offset: part.offset, stride: nsx.stride, columns }
     }

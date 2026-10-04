@@ -2,9 +2,11 @@
 //!
 //! A block folder holds a TSQ index, a TEV data file (or per-channel SEV files), and text
 //! sidecars. Every store becomes part of one [`Session`]:
-//! streams → [`Recording`](nc_core::Recording)s, epocs and scalars →
+//! streams → [`Recording`]s, epocs and scalars →
 //! [`EventSeries`](nc_core::EventSeries), snips →
 //! [`SnippetSeries`](nc_core::SnippetSeries), CSV exports → tables.
+
+#![warn(missing_docs)]
 
 /// This crate's version (`nc-tdt`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
@@ -43,6 +45,7 @@ use nc_base::text::read_text;
 use nc_base::time::{format_iso, parse_iso};
 use nc_core::{Detection, Device, Error, OpenOptions, Provenance, Reader, Recording, Result, Session};
 
+/// The TDT reader (Synapse / OpenEx blocks and tanks).
 pub struct Tdt;
 
 impl Reader for Tdt {

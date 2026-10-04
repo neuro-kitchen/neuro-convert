@@ -15,7 +15,9 @@ use nc_core::{check_read, Recording, RecordingInfo, Result};
 /// How a stored 16-bit value becomes a number (before the channel's gain and offset).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Decode {
+    /// Signed 16-bit.
     I16,
+    /// Unsigned 16-bit.
     U16,
     /// Unsigned with a 32768 offset: read as `raw − 32768`, i.e. the int16 of `raw ^ 0x8000`
     /// (kept as int16 so stores keep the native type).
@@ -25,6 +27,7 @@ pub enum Decode {
 }
 
 impl Decode {
+    /// The number `raw` stands for.
     pub fn value(self, raw: u16) -> f64 {
         match self {
             Decode::I16 => raw as i16 as f64,
@@ -38,12 +41,27 @@ impl Decode {
     }
 }
 
+/// Where a channel's samples lie in its file.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Place {
     /// Byte `start + block · block_bytes + at + (sample % per_block) · 2`.
-    Blocks { start: u64, block_bytes: u64, per_block: u64, at: u64 },
+    Blocks {
+        /// First data block.
+        start: u64,
+        /// Bytes per block.
+        block_bytes: u64,
+        /// Samples per block.
+        per_block: u64,
+        /// Offset of this channel's run within a block.
+        at: u64,
+    },
     /// Column `column` of `columns` interleaved 16-bit values per sample.
-    Interleaved { columns: u64, column: u64 },
+    Interleaved {
+        /// Values per sample.
+        columns: u64,
+        /// This channel's column.
+        column: u64,
+    },
     /// The whole file is this channel.
     Whole,
 }
@@ -51,11 +69,14 @@ pub enum Place {
 /// One channel's samples.
 #[derive(Clone)]
 pub struct Column {
+    /// The file holding the samples.
     pub file: Arc<MappedFile>,
+    /// Where they lie in it.
     pub place: Place,
 }
 
 impl Column {
+    /// Byte offset of `sample`.
     pub fn byte(&self, sample: u64) -> usize {
         (match self.place {
             Place::Blocks { start, block_bytes, per_block, at } => start + (sample / per_block) * block_bytes + at + (sample % per_block) * 2,
@@ -64,6 +85,7 @@ impl Column {
         }) as usize
     }
 
+    /// The stored 16-bit value of `sample`.
     pub fn raw(&self, sample: u64) -> u16 {
         let b = self.file.bytes();
         let i = self.byte(sample);
@@ -90,6 +112,7 @@ pub struct IntanRecording {
 }
 
 impl IntanRecording {
+    /// A recording of `columns` (one per channel of `info`), decoded with `decode`.
     pub fn new(info: RecordingInfo, columns: Vec<Column>, decode: Decode) -> Self {
         debug_assert_eq!(info.channels.len(), columns.len());
         Self { info, columns, decode }

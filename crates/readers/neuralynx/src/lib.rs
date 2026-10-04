@@ -16,6 +16,8 @@
 //! earliest `Time Opened` / `TimeCreated` (local time of the recording computer). `.nvt` / `.nrd`
 //! are not read. A folder holding several sessions in sub-folders lists them as containers.
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-neuralynx`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -40,6 +42,7 @@ use nc_core::{
 };
 use ncs::{NcsFile, NcsRecording};
 
+/// The Neuralynx reader.
 pub struct Neuralynx;
 
 const DATA: [&str; 5] = ["ncs", "nse", "nst", "ntt", "nev"];

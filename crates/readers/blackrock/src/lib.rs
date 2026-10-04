@@ -17,6 +17,8 @@
 //! Times are seconds from the earliest timestamp of the container; the start time is the NSx
 //! (else NEV) time origin, in UTC.
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-blackrock`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -40,12 +42,15 @@ use nc_core::{
 use nev::{Nev, NevWaveforms};
 use nsx::{Nsx, NsxRecording};
 
+/// The Blackrock NSx / NEV reader.
 pub struct Blackrock;
 
 /// The files of one recording: `<base>.nev` and `<base>.ns<N>`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct FileSet {
+    /// Path without extension.
     pub base: PathBuf,
+    /// The `.nev`, when present.
     pub nev: Option<PathBuf>,
     /// (N, path), ascending.
     pub nsx: Vec<(u8, PathBuf)>,

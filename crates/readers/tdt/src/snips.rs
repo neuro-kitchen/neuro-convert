@@ -41,6 +41,8 @@ impl Waveforms for TevWaveforms {
     }
 }
 
+/// A snippet series for snip store `store` of the TEV, with times relative to `block_start` and,
+/// with `sort` (name, `.SortResult` bytes), the offline sort codes.
 pub fn build(store: &StoreIndex, tev: &Arc<MappedFile>, block_start: f64, sort: Option<(&str, &[u8])>, warnings: &mut Vec<String>) -> Result<SnippetSeries> {
     let ty = codes::sample_type(store.format)
         .ok_or_else(|| Error::Unsupported(format!("TDT snip store {}: data format code {}", store.name, store.format)))?;

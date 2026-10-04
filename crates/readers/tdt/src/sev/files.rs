@@ -10,12 +10,18 @@ use std::path::{Path, PathBuf};
 use super::header::{SevHeader, HEADER_BYTES};
 use nc_base::{Error, Result};
 
+/// One SEV file: its header and where it belongs.
 #[derive(Debug, Clone)]
 pub struct SevFile {
+    /// The file.
     pub path: PathBuf,
+    /// Store name (header v3+, else the file name).
     pub store: String,
+    /// 1-based channel.
     pub channel: u16,
+    /// Hour file number, 0 for the first.
     pub hour: u32,
+    /// Parsed header.
     pub header: SevHeader,
     /// Payload bytes after the header.
     pub data_bytes: u64,
@@ -40,6 +46,7 @@ pub fn parse_name(stem: &str) -> (Option<String>, Option<u16>, u32) {
     (store, channel, hour)
 }
 
+/// Reads the header of the SEV file at `path` and resolves its store, channel and hour.
 pub fn read_file(path: &Path) -> Result<SevFile> {
     let mut head = [0u8; HEADER_BYTES];
     use std::io::Read;
@@ -57,6 +64,7 @@ pub fn read_file(path: &Path) -> Result<SevFile> {
 /// Store → channel → hour files in order.
 pub type SevStores = BTreeMap<String, BTreeMap<u16, Vec<SevFile>>>;
 
+/// Groups SEV files by store, channel and hour; unreadable files become warnings.
 pub fn group(paths: &[PathBuf], warnings: &mut Vec<String>) -> SevStores {
     let mut out: SevStores = BTreeMap::new();
     for p in paths {

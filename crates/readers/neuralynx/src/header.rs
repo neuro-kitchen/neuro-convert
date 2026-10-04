@@ -4,6 +4,7 @@
 
 use std::collections::BTreeMap;
 
+/// Header size in bytes; records start after it.
 pub const SIZE: usize = 16 * 1024;
 
 /// How the recording system timed its records (neo's `AcqType`): decides gap tolerance and how
@@ -19,8 +20,10 @@ pub enum Acquisition {
     Measured,
 }
 
+/// A parsed header.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Header {
+    /// `-Key value` properties (first value of a repeated key).
     pub props: BTreeMap<String, String>,
     /// `## Time Opened …` / `-TimeCreated`, as an ISO-8601 local date-time.
     pub opened: Option<String>,
@@ -42,6 +45,7 @@ fn iso(date: &str, time: &str, year_first: bool) -> Option<String> {
 }
 
 impl Header {
+    /// Parses the header at the start of `bytes`.
     pub fn parse(bytes: &[u8]) -> Self {
         let raw = &bytes[..bytes.len().min(SIZE)];
         // Latin-1 (the µ of `DspFilterDelay_µs`)
@@ -73,10 +77,12 @@ impl Header {
         Self { props, opened }
     }
 
+    /// Property `key`.
     pub fn get(&self, key: &str) -> Option<&str> {
         self.props.get(key).map(String::as_str)
     }
 
+    /// `-SamplingFrequency` as stated.
     pub fn sample_rate(&self) -> Option<f64> {
         self.get("SamplingFrequency")?.parse().ok()
     }
@@ -91,14 +97,17 @@ impl Header {
         }
     }
 
+    /// `-ADChannel` ids, in file order.
     pub fn channel_ids(&self) -> Vec<i64> {
         self.get("ADChannel").map(|v| words(v).iter().filter_map(|x| x.parse().ok()).collect()).unwrap_or_default()
     }
 
+    /// `-AcqEntName`, when not empty.
     pub fn name(&self) -> Option<&str> {
         self.get("AcqEntName").filter(|n| !n.is_empty())
     }
 
+    /// `-InputInverted True`.
     pub fn inverted(&self) -> bool {
         self.get("InputInverted") == Some("True")
     }
@@ -110,6 +119,7 @@ impl Header {
         (0..n).map(|i| v.get(i).and_then(|x| x.parse::<f64>().ok()).map(|g| g * sign)).collect()
     }
 
+    /// How the system timed its records.
     pub fn acquisition(&self) -> Acquisition {
         if let Some(t) = self.get("NLX_Base_Class_Type") {
             return if t == "CscAcqEnt" { Acquisition::Pre4 } else { Acquisition::Stated };

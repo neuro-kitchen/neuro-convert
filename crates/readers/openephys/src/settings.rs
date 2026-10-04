@@ -7,16 +7,20 @@
 pub struct Probe {
     /// `probe_name` (model), e.g. `Neuropixels 1.0`.
     pub model: String,
+    /// Probe serial number.
     pub serial: String,
     /// Site position (x, y in µm) per channel, by channel index.
     pub positions: Vec<Option<[f32; 2]>>,
 }
 
+/// What is read from `settings.xml`.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Settings {
     /// `<DATE>`: local time when the settings were saved, e.g. `30 Aug 2023 23:41:36`.
     pub date: Option<String>,
+    /// `<VERSION>`: GUI version.
     pub version: Option<String>,
+    /// Neuropixels probes, in file order.
     pub probes: Vec<Probe>,
 }
 
@@ -56,6 +60,7 @@ fn per_channel(attrs: &[(&str, &str)]) -> Vec<Option<f32>> {
     out
 }
 
+/// Reads the date, version and probes from `settings.xml` text.
 pub fn parse(text: &str) -> Settings {
     let mut s = Settings { date: element(text, "DATE").map(str::to_string), version: element(text, "VERSION").map(str::to_string), probes: Vec::new() };
     for part in text.split("<NP_PROBE ").skip(1) {

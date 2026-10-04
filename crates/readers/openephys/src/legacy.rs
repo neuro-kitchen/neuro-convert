@@ -48,7 +48,9 @@ pub fn header(bytes: &[u8]) -> BTreeMap<String, String> {
 /// A legacy file name: processor, optional source name, channel / electrode, start number.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Name {
+    /// Processor id from the file name (`100`); empty for non-continuous files.
     pub processor: String,
+    /// Source name between processor and channel, when present.
     pub source: Option<String>,
     /// `CH3`, `AUX1`, `ADC2` (continuous); the electrode for spikes; `all_channels`, `messages`.
     pub item: String,
@@ -57,6 +59,7 @@ pub struct Name {
 }
 
 impl Name {
+    /// Parses a legacy file name; `None` when it does not follow the pattern.
     pub fn parse(path: &Path) -> Option<Self> {
         let stem = path.file_stem()?.to_string_lossy().into_owned();
         let mut parts: Vec<&str> = stem.split('_').collect();
@@ -83,6 +86,7 @@ impl Name {
         self.item.trim_end_matches(|c: char| c.is_ascii_digit())
     }
 
+    /// The number after [`kind`](Self::kind) (`3` in `CH3`).
     pub fn number(&self) -> u32 {
         self.item[self.kind().len()..].parse().unwrap_or(0)
     }

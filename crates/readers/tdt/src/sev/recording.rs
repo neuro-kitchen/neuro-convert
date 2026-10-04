@@ -16,6 +16,7 @@ use nc_core::{check_read, Calibration, ChannelInfo, Error, MemoryOrder, Recordin
 /// Which part of each stored item a recording exposes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Part {
+    /// The stored value.
     Whole,
     /// Rawpacked single-unit samples: signed high 16 bits.
     High16,
@@ -30,6 +31,7 @@ struct ChannelFiles {
     starts: Vec<u64>,
 }
 
+/// A SEV store: one file (or hour files) per channel, memory-mapped.
 pub struct SevStream {
     info: RecordingInfo,
     channels: Vec<ChannelFiles>,

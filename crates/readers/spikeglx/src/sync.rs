@@ -20,29 +20,43 @@ pub const SYNC_BIT: u32 = 6;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Level {
     /// Bit `bit` of the int16 word in `column`.
-    Bit { column: usize, bit: u32 },
+    Bit {
+        /// Column of the `.bin`.
+        column: usize,
+        /// Bit of the word.
+        bit: u32,
+    },
     /// The int16 value of `column` above `threshold` (raw units).
-    Above { column: usize, threshold: f64 },
+    Above {
+        /// Column of the `.bin`.
+        column: usize,
+        /// Raw value above which the level is high.
+        threshold: f64,
+    },
 }
 
 /// The int16 columns of a `.bin`, sample by sample.
 pub struct Columns<'a> {
     bytes: &'a [u8],
     columns: usize,
+    /// Samples (rows) in the file.
     pub samples: u64,
 }
 
 impl<'a> Columns<'a> {
+    /// The `columns`-wide int16 rows of `file`.
     pub fn new(file: &'a MappedFile, columns: usize) -> Self {
         let bytes = file.bytes();
         Self { bytes, columns, samples: (bytes.len() / (2 * columns.max(1))) as u64 }
     }
 
+    /// The int16 value of `column` at sample `t`.
     pub fn word(&self, column: usize, t: u64) -> i16 {
         let at = (t as usize * self.columns + column) * 2;
         i16::from_le_bytes([self.bytes[at], self.bytes[at + 1]])
     }
 
+    /// `true` when `level` is high at sample `t`.
     pub fn level(&self, level: Level, t: u64) -> bool {
         match level {
             Level::Bit { column, bit } => (self.word(column, t) as u16 >> bit) & 1 == 1,
@@ -137,7 +151,9 @@ pub fn periods(rising: &[u64], falling: &[u64], end: u64) -> Vec<(u64, u64)> {
 /// A clock fit: reference time = `scale` × stream time + `offset` (seconds).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Fit {
+    /// Reference seconds per stream second.
     pub scale: f64,
+    /// Reference time of stream time 0, in seconds.
     pub offset: f64,
     /// Edges matched.
     pub edges: usize,

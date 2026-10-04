@@ -1,11 +1,15 @@
 //! OpenEx note file (`.tnt`): `NOTEFILE_VERSION[x.y]` then one note per line.
 
+/// A parsed `.tnt` file.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct TntNotes {
+    /// `NOTEFILE_VERSION`.
     pub version: Option<String>,
+    /// One entry per note line.
     pub notes: Vec<String>,
 }
 
+/// Parses `.tnt` text.
 pub fn parse_tnt(text: &str) -> TntNotes {
     let mut out = TntNotes::default();
     for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {

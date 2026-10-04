@@ -19,12 +19,26 @@ const NP1_TYPES: [u32; 10] = [0, 1020, 1030, 1100, 1120, 1121, 1122, 1123, 1200,
 /// Gains of a probe's channels, indexed by probe channel (0-based, as in the IMRO table).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Gains {
-    PerChannel { ap: Vec<f64>, lf: Vec<f64> },
-    Uniform { ap: f64, lf: Option<f64> },
+    /// One gain per channel from the IMRO table (NP1.0 family).
+    PerChannel {
+        /// AP band gains.
+        ap: Vec<f64>,
+        /// LF band gains.
+        lf: Vec<f64>,
+    },
+    /// One gain for every channel (`imChan0apGain`, or fixed for NP2.0).
+    Uniform {
+        /// AP band gain.
+        ap: f64,
+        /// LF band gain; NP2.0 has no LF band.
+        lf: Option<f64>,
+    },
+    /// No gain found: values stay in stored units.
     Unknown,
 }
 
 impl Gains {
+    /// The gains `meta` declares.
     pub fn from_meta(meta: &Meta) -> Self {
         let np1 = meta.is_3a() || meta.probe_type().is_some_and(|t| NP1_TYPES.contains(&t));
         if np1 && let Some((_, rows)) = meta.table("imroTbl", ',', ' ') {
@@ -57,6 +71,7 @@ impl Gains {
 /// One site of the geometry map, in file order of the neural channels.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Site {
+    /// Shank index.
     pub shank: usize,
     /// µm, across the probe (shank offset included).
     pub x: f32,

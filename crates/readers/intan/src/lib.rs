@@ -19,6 +19,8 @@
 //! Not yet: joining the consecutive files of a traditional recording split by time (each file is
 //! a container), notch filtering (Intan's readers apply it on request; RHX ≥ 3 saves filtered data).
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-intan`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -43,6 +45,7 @@ use nc_core::{
     Reader, RecordingInfo, Result, SampleType, Session, SignalKind,
 };
 
+/// The Intan RHD / RHS reader.
 pub struct Intan;
 
 /// How a recording is laid out on disk.

@@ -7,18 +7,29 @@ use std::path::{Path, PathBuf};
 /// and exported tables (`*.csv`).
 #[derive(Debug, Clone, Default)]
 pub struct BlockFiles {
+    /// The block folder.
     pub dir: PathBuf,
     /// Block name (folder name).
     pub name: String,
+    /// Event index.
     pub tsq: PathBuf,
+    /// Packet data.
     pub tev: Option<PathBuf>,
+    /// Store settings.
     pub tbk: Option<PathBuf>,
+    /// Index acceleration (unused).
     pub tdx: Option<PathBuf>,
+    /// Synapse run archive.
     pub tin: Option<PathBuf>,
+    /// OpenEx notes.
     pub tnt: Option<PathBuf>,
+    /// Synapse `Notes.txt`.
     pub notes: Option<PathBuf>,
+    /// Synapse `StoresListing.txt`.
     pub stores_listing: Option<PathBuf>,
+    /// Per-channel SEV files.
     pub sev: Vec<PathBuf>,
+    /// Exported tables (impedances).
     pub csv: Vec<PathBuf>,
 }
 
