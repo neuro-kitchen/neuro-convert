@@ -21,6 +21,7 @@ fn err(context: &str, e: impl std::fmt::Display) -> Error {
     Error::format("nwb-zarr", format!("{context}: {e}"))
 }
 
+/// Writes a Zarr v3 store in hdmf-zarr's layout.
 pub struct ZarrBackend {
     store: ReadableWritableListableStorage,
     /// gzip level for datasets (`None` = uncompressed).

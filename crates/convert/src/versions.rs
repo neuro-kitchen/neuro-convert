@@ -6,11 +6,14 @@ use serde::{Deserialize, Serialize};
 /// A crate (or program) and its version.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CrateVersion {
+    /// Crate or program name (`nc-tdt`, `neuro-convert`).
     pub name: String,
+    /// Its version.
     pub version: String,
 }
 
 impl CrateVersion {
+    /// `name` at `version`.
     pub fn new(name: &str, version: &str) -> Self {
         Self { name: name.into(), version: version.into() }
     }

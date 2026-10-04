@@ -6,6 +6,8 @@
 //! Readers outside this repository plug in without a fork:
 //! `Registry::builtin().with(MyReader)`.
 
+#![warn(missing_docs)]
+
 /// This crate's version (`nc-convert`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

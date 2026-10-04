@@ -9,15 +9,23 @@ use nc_core::{Calibration, Device, Issue, Level, MetadataFile, Session, StreamTy
 /// NWB file-level fields, resolved.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct FileFields {
+    /// Session description.
     pub description: String,
+    /// Unique identifier (UUID when the metadata gives none).
     pub identifier: String,
     /// ISO 8601 with a time zone.
     pub start_time: String,
+    /// What the experiment is about.
     pub experiment_description: Option<String>,
+    /// People who ran the session.
     pub experimenters: Vec<String>,
+    /// Lab name.
     pub lab: Option<String>,
+    /// Institution name.
     pub institution: Option<String>,
+    /// Search keywords.
     pub keywords: Vec<String>,
+    /// Session notes recorded by the source, joined.
     pub notes: Option<String>,
     /// What wrote the file (`/general/source_script`): program, reader and writer versions; its
     /// `file_name` attribute is the program. Set by the conversion job.
@@ -25,21 +33,33 @@ pub struct FileFields {
     pub source_script: Option<(String, String)>,
 }
 
+/// `/general/subject` fields, resolved.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct SubjectFields {
+    /// Subject id.
     pub id: Option<String>,
+    /// Latin binomial.
     pub species: Option<String>,
+    /// `M`, `F`, `U` or `O`.
     pub sex: Option<String>,
+    /// ISO 8601 duration.
     pub age: Option<String>,
+    /// Strain.
     pub strain: Option<String>,
+    /// Free text.
     pub description: Option<String>,
 }
 
+/// One electrode group to write.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct GroupPlan {
+    /// Group name.
     pub name: String,
+    /// What the group is.
     pub description: String,
+    /// Anatomical location.
     pub location: String,
+    /// Device the group links to.
     pub device: String,
 }
 
@@ -48,12 +68,17 @@ pub struct GroupPlan {
 pub struct SeriesPlan {
     /// Index into `Session::recordings`.
     pub recording: usize,
+    /// Source name of the recording.
     pub source: String,
+    /// Output name in `/acquisition`.
     pub name: String,
+    /// Output description.
     pub description: String,
     /// Electrodes-table row of each channel for an `ElectricalSeries`; `None` for a `TimeSeries`.
     pub electrodes: Option<Vec<usize>>,
+    /// Unit after `conversion`.
     pub unit: String,
+    /// Multiplier from stored values to `unit` (shared gain and user conversion).
     pub conversion: f64,
 }
 
@@ -63,8 +88,11 @@ pub struct SeriesPlan {
 pub struct EventPlan {
     /// Index into `Session::events`.
     pub event: usize,
+    /// Source name of the event series.
     pub source: String,
+    /// Output name.
     pub name: String,
+    /// Output description.
     pub description: String,
     /// `EventsTable` (single-value events) vs `TimeSeries` (one row of values per event).
     pub table: bool,
@@ -76,9 +104,11 @@ pub struct EventPlan {
 pub struct SnippetPlan {
     /// Index into `Session::snippets`.
     pub snippet: usize,
+    /// Source name of the snippet store.
     pub source: String,
     /// Series names are `<name>_ch<channel>`.
     pub name: String,
+    /// Output description.
     pub description: String,
     /// Multiplier from the stored snippet values to volts.
     pub conversion: f64,
@@ -86,29 +116,44 @@ pub struct SnippetPlan {
     pub rows: Vec<(u16, usize)>,
 }
 
+/// One table to write in `/analysis`.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct TablePlan {
+    /// Index into `Session::tables`.
     pub table: usize,
+    /// Output name.
     pub name: String,
+    /// Output description.
     pub description: String,
 }
 
+/// Everything [`write`](crate::write()) writes, decided before writing, with the issues found.
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct NwbPlan {
+    /// Root and `/general` fields.
     pub file: FileFields,
+    /// `/general/subject`.
     pub subject: SubjectFields,
+    /// `/general/devices`.
     pub devices: Vec<Device>,
+    /// Electrode groups.
     pub groups: Vec<GroupPlan>,
+    /// Continuous series.
     pub series: Vec<SeriesPlan>,
+    /// Event series.
     pub events: Vec<EventPlan>,
+    /// Tables.
     pub tables: Vec<TablePlan>,
+    /// Snippet stores.
     pub snippets: Vec<SnippetPlan>,
     /// Source items left out (by the metadata file).
     pub skipped: Vec<String>,
+    /// Errors (block writing) and warnings.
     pub issues: Vec<Issue>,
 }
 
 impl NwbPlan {
+    /// `true` when an issue blocks writing.
     pub fn has_errors(&self) -> bool {
         self.issues.iter().any(|i| i.level == Level::Error)
     }
@@ -135,6 +180,9 @@ fn field(path: &str) -> Target {
     Target::Field(path.into())
 }
 
+/// Decides what to write for `session` under `meta`: names, units, storage, inclusion, file
+/// fields, and the issues. Electrodes must already be in the session ([`crate::plan`] applies the
+/// metadata file first). `new_identifier` is called only when the metadata gives no identifier.
 pub fn resolve(session: &Session, meta: &MetadataFile, new_identifier: impl FnOnce() -> String) -> NwbPlan {
     let mut plan = NwbPlan::default();
     let issues = &mut plan.issues;

@@ -14,6 +14,7 @@ use serde_json::{Map, Value};
 
 use nc_base::{Result, SampleType};
 
+/// Attributes of a group or dataset (JSON values, as hdmf-zarr stores them).
 pub type Attrs = Map<String, Value>;
 
 /// Streams a large dataset in pieces along its first dimension (safe to share between threads).
@@ -23,7 +24,9 @@ pub trait RowSink: Send + Sync {
     fn write_rows(&self, start: u64, rows: u64, bytes: &[u8]) -> Result<()>;
 }
 
+/// Where NWB objects are stored. Paths are HDMF paths (`/acquisition/HDEG/data`).
 pub trait Backend {
+    /// Group at `path` with `attrs`.
     fn group(&self, path: &str, attrs: Attrs) -> Result<()>;
     /// Scalar string dataset.
     fn string(&self, path: &str, value: &str, attrs: Attrs) -> Result<()>;
@@ -33,6 +36,7 @@ pub trait Backend {
     fn f64_scalar(&self, path: &str, value: f64, attrs: Attrs) -> Result<()>;
     /// Float64 dataset of `shape` (row-major values), dimensions named `dims`.
     fn f64s(&self, path: &str, values: &[f64], shape: &[u64], dims: &[&str], attrs: Attrs) -> Result<()>;
+    /// 1-D int64 dataset.
     fn i64s(&self, path: &str, values: &[i64], dim: &str, attrs: Attrs) -> Result<()>;
     /// 1-D uint64 dataset (`VectorIndex`: NWB wants an unsigned type).
     fn u64s(&self, path: &str, values: &[u64], dim: &str, attrs: Attrs) -> Result<()>;
@@ -69,11 +73,14 @@ pub fn with_format(dest: &Path, format: Format) -> std::path::PathBuf {
 /// Where `dest` is written: NWB on HDF5 for a `.nwb` file, else a Zarr store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Format {
+    /// Zarr v3 store (`.nwb.zarr`) in hdmf-zarr's layout.
     Zarr,
+    /// HDF5 file (`.nwb`) in pynwb's layout.
     Hdf5,
 }
 
 impl Format {
+    /// The format for output `dest`: HDF5 for a `.nwb` file name, else Zarr.
     pub fn of(dest: &Path) -> Self {
         let name = dest.file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default();
         if name.ends_with(".nwb") && !dest.is_dir() { Format::Hdf5 } else { Format::Zarr }

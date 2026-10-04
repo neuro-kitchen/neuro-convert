@@ -8,8 +8,10 @@ use crate::backend::{Attrs, Backend};
 use crate::mapping::NwbPlan;
 use nc_core::{Result, Session};
 
+/// Path of the electrodes table.
 pub const TABLE_PATH: &str = "/general/extracellular_ephys/electrodes";
 
+/// Writes the electrode groups and the electrodes table.
 pub fn write(b: &dyn Backend, plan: &NwbPlan, session: &Session) -> Result<()> {
     if plan.groups.is_empty() && session.electrodes.is_empty() {
         return Ok(());

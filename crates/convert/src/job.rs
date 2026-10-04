@@ -24,14 +24,17 @@ use crate::Registry;
 pub struct CancelToken(Arc<AtomicBool>);
 
 impl CancelToken {
+    /// A token not yet cancelled.
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// Asks every holder to stop.
     pub fn cancel(&self) {
         self.0.store(true, Ordering::Relaxed);
     }
 
+    /// `true` once [`cancel`](Self::cancel) was called.
     pub fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Relaxed)
     }
@@ -43,14 +46,18 @@ impl CancelToken {
 pub enum Stage {
     /// Hashing source files against the checksums their format records (full verification).
     CheckingSource,
+    /// Writing the NWB output.
     Writing,
+    /// Checking the output's structure and content.
     Verifying,
+    /// Finished.
     Done,
 }
 
 /// What [`Job::write`] reports while it runs (from its own threads: keep the handler cheap).
 #[derive(Debug, Clone, Copy)]
 pub enum Event {
+    /// A new stage started.
     Stage(Stage),
     /// Progress of the current stage: bytes hashed (`CheckingSource`), samples copied
     /// (`Writing`) or values compared (`Verifying`).
@@ -60,10 +67,15 @@ pub enum Event {
 /// Everything about a finished conversion; saved next to the output as `<output>.report.json`.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
+    /// The recording converted.
     pub source: PathBuf,
+    /// The NWB output written.
     pub output: PathBuf,
+    /// What was written: series, samples, bytes, time.
     pub summary: WriteSummary,
+    /// The plan that was written, with its issues.
     pub plan: NwbPlan,
+    /// Reader, files read, warnings.
     pub provenance: Provenance,
     /// Structural checks of the written store (`nc_nwb::validate`) and content mismatches.
     pub verification: Vec<Issue>,
@@ -89,12 +101,15 @@ impl Report {
         self.output.with_extension("report.json")
     }
 
+    /// Writes the report as JSON to `path`.
     pub fn save(&self, path: &Path) -> Result<()> {
         let text = serde_json::to_string_pretty(self).map_err(|e| Error::format("report", e.to_string()))?;
         std::fs::write(path, text).map_err(|e| Error::io(path, e))
     }
 }
 
+/// One conversion: open a recording, plan it against a metadata file, write and verify the
+/// NWB output. See [`Job::open`], [`Job::plan`], [`Job::write`].
 pub struct Job {
     source: PathBuf,
     detection: Detection,
@@ -133,14 +148,17 @@ impl Job {
         Ok(Self { source: path.to_path_buf(), detection, session, plan: None, identifier: nc_nwb::new_identifier(), program: None })
     }
 
+    /// The recording path.
     pub fn source(&self) -> &Path {
         &self.source
     }
 
+    /// The reader's claim on the path (format, version, confidence).
     pub fn detection(&self) -> &Detection {
         &self.detection
     }
 
+    /// The session as read (with the latest plan's metadata applied).
     pub fn session(&self) -> &Session {
         &self.session
     }
@@ -158,6 +176,7 @@ impl Job {
         self.plan.insert(plan)
     }
 
+    /// The latest plan, if [`plan`](Self::plan) was called.
     pub fn current_plan(&self) -> Option<&NwbPlan> {
         self.plan.as_ref()
     }

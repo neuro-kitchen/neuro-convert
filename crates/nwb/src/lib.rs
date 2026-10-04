@@ -1,8 +1,10 @@
 //! nc-nwb: Neurodata Without Borders (NWB 2.11) output.
 //!
 //! [`mapping::resolve`] turns a [`Session`] plus the user's metadata file into an [`NwbPlan`];
-//! [`write`] writes that plan through a storage [`backend`] (Zarr today), streaming continuous
+//! [`write()`] writes that plan through a storage [`backend`] (Zarr or HDF5), streaming continuous
 //! data in parallel chunks. Nothing here knows which reader produced the session.
+
+#![warn(missing_docs)]
 
 /// This crate's version (`nc-nwb`, from its `Cargo.toml`): recorded in every conversion's
 /// provenance and report, so a problem in a file can be traced to the code that wrote it.
@@ -85,6 +87,7 @@ impl std::str::FromStr for ChunkPolicy {
     }
 }
 
+/// How [`write()`] writes and what the job verifies afterwards.
 #[derive(Debug, Clone)]
 pub struct NwbOptions {
     /// gzip level 1–9 for datasets; `None` writes uncompressed (fastest). Default 1: on the
@@ -92,15 +95,16 @@ pub struct NwbOptions {
     pub gzip: Option<u32>,
     /// Chunk length along time for continuous data.
     pub chunks: ChunkPolicy,
-    /// Worker threads copying continuous data. Default: [`available_threads(0)`]; an app sharing
+    /// Worker threads copying continuous data. Default: [`available_threads`]`(0)`; an app sharing
     /// the machine with its UI would use `available_threads(1)`.
     pub threads: usize,
+    /// Replace an existing output at `dest`.
     pub overwrite: bool,
     /// Set to `true` from any thread to stop the write; it then returns [`Error::Cancelled`] and
     /// the store is left incomplete (no `/specifications`).
     pub cancel: Option<Arc<AtomicBool>>,
     /// How much sample data is read back and compared with the source after writing
-    /// ([`integrity::verify`]; run by `nc_convert::Job`, not by [`write`]).
+    /// ([`integrity::verify`]; run by `nc_convert::Job`, not by [`write()`]).
     pub verify: VerifyLevel,
     /// At [`VerifyLevel::Full`], hash source files whose format records a checksum (SpikeGLX
     /// `fileSHA1`) before writing, and refuse to convert on a mismatch (`nc_convert::Job`).
@@ -140,20 +144,28 @@ mod tests {
 /// Progress of a write: samples copied so far out of the total.
 #[derive(Debug, Clone, Copy)]
 pub struct Progress {
+    /// Samples copied so far.
     pub done: u64,
+    /// Samples to copy.
     pub total: u64,
+    /// Time since the write started.
     pub elapsed: Duration,
 }
 
+/// What [`write()`] wrote.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct WriteSummary {
+    /// The output.
     pub path: String,
+    /// Continuous series written.
     pub series: usize,
+    /// Samples written (all channels).
     pub samples: u64,
+    /// Wall-clock time of the write.
     pub seconds: f64,
 }
 
-/// Writes `plan` for `session` to a new NWB-Zarr store at `dest`. `progress` is called from a
+/// Writes `plan` for `session` to a new NWB output at `dest` (Zarr store, or HDF5 file for a `.nwb` name). `progress` is called from a
 /// monitor thread about twice a second while continuous data is copied.
 pub fn write(
     session: &Session,

@@ -59,10 +59,12 @@ impl Registry {
         self
     }
 
+    /// The readers, in registration order.
     pub fn readers(&self) -> impl Iterator<Item = &dyn Reader> {
         self.readers.iter().map(|r| r.as_ref())
     }
 
+    /// The reader named `name`.
     pub fn get(&self, name: &str) -> Option<&dyn Reader> {
         self.readers().find(|r| r.name() == name)
     }

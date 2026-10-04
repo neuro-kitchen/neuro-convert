@@ -10,6 +10,7 @@ use super::typed_with;
 use crate::backend::{Attrs, Backend};
 use nc_core::{Device, Result};
 
+/// Writes every device (and its `DeviceModel` when the model is known).
 pub fn write(b: &dyn Backend, devices: &[Device]) -> Result<()> {
     if devices.is_empty() {
         return Ok(());

@@ -8,10 +8,12 @@ use crate::backend::{Attrs, Backend};
 use crate::mapping::EventPlan;
 use nc_core::{EventSeries, Result};
 
+/// Creates the `/events` group.
 pub fn write_group(b: &dyn Backend) -> Result<()> {
     b.group("/events", Attrs::new())
 }
 
+/// Writes one event series as an `EventsTable`.
 pub fn write(b: &dyn Backend, plan: &EventPlan, e: &EventSeries) -> Result<()> {
     let path = format!("/events/{}", plan.name);
     let n = e.len() as u64;
