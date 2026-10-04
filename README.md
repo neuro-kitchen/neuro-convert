@@ -1,93 +1,170 @@
 # neuro-convert
 
-Read neurophysiology recordings into one neutral model and convert them to NWB, stored as Zarr or
-(optional build feature) HDF5. Pure Rust (HDF5 through the HDF5 C library), streaming (multi-hour recordings never sit in memory), modular (one crate per input
-format).
+> **Under development.** neuro-convert is available for testing and not ready for production use.
+> Expect changes to the command line, the metadata file, the output and the API between versions.
 
-```
-neuro-convert formats                         # inputs / outputs this build supports
-neuro-convert inspect <recording> [--json]    # streams, events, tables, metadata, warnings
-neuro-convert convert <recording> -m meta.yaml -o out.nwb.zarr [--dry-run] [--gzip 1]
-neuro-convert convert <recording> -m meta.yaml -o out.nwb       # NWB/HDF5 (built with `hdf5`)
-neuro-convert validate out.nwb.zarr           # structural checks of the NWB store
-neuro-convert verify out.nwb.zarr             # structure + content against its report's digests
-```
-Options for opening a recording: `--block <name>` (TDT tanks), `--sort <id>` (offline spike
-sorts), `--only A,B` (load only these streams / stores).
+Converts neurophysiology recordings to [NWB](https://nwb.org) 2.11, as a Zarr store
+(`.nwb.zarr`) or an HDF5 file (`.nwb`). Command line and desktop app, written in Rust.
 
-## Supported
-| Input | Versions |
+![neuro-convert app: the Contents step with a Neuropixels recording](assets/preview/main.png)
+
+- **Streaming.** Recordings are memory-mapped and copied in blocks; multi-hour recordings never sit
+  in memory.
+- **Exact values.** Samples keep their stored integer type; gains are written as NWB `conversion`
+  / `channel_conversion`.
+- **Verified output.** After writing, the data in the file is read back and compared with the
+  source (xxh3-64 per block). The digests go to `<output>.report.json`; `neuro-convert verify`
+  re-checks a copy against them without the source.
+- **Compared readers.** Each reader is compared value for value with a reference reader (neo,
+  TDT's `tdt` package, SpikeGLX's conversion rules, probeinterface) on public test data, through
+  the whole pipeline.
+- **Traceable.** The program, reader and crate versions are recorded in the report and in the
+  NWB file (`/general/source_script`).
+
+Documentation: [`docs/`](docs/introduction.md), an mdBook (`mdbook serve docs` to read it
+locally). API reference: `cargo doc --no-deps --workspace --exclude nc-app --open`.
+
+## Supported formats
+
+| Input | Versions | Open |
+|---|---|---|
+| TDT | Synapse and OpenEx; TEV and SEV v0–v3 | block folder, or tank with `--block` |
+| SpikeGLX | Neuropixels 3A, 1.0 family, 2.0; NI-DAQ; OneBox; multi-trigger gates, CatGT `_tcat` | run folder, `.bin` or `.meta` |
+| Intan | RHD and RHS 1.0–3.x; one file, one file per signal type, one file per channel | `.rhd` / `.rhs` file or RHX folder |
+| Open Ephys | Binary format, GUI 0.4.4–0.6+; legacy `.continuous` (GUI ≤ 0.4) | save folder, record node or recording folder |
+| Blackrock | NSx / NEV file spec 2.1–3.0, PTP timestamps | folder or any file of the recording |
+| Neuralynx | Cheetah 1–6, Pegasus 2, BML, Neuraview | session folder or any file in it |
+
+| Output | Layout | Read with |
+|---|---|---|
+| NWB 2.11, Zarr v3 (`-o name.nwb.zarr`) | hdmf-zarr's | pynwb + hdmf-zarr ≥ 0.14, DANDI |
+| NWB 2.11, HDF5 (`-o name.nwb`) | pynwb's | pynwb, h5py; needs a build with HDF5 |
+
+Both outputs cache the NWB schema in the file.
+
+Per format: what is read, how it maps to NWB, and where it differs from the reference reader —
+[`docs/formats/`](docs/formats/). Reader maturity and tested tool versions —
+[`docs/compatibility.md`](docs/compatibility.md). How the model becomes NWB —
+[`docs/outputs/nwb-mapping.md`](docs/outputs/nwb-mapping.md).
+
+Not supported yet: probe library and headstage wiring; joining Intan time-split files; Open Ephys
+binary-format spikes; Plexon, Spike2 and other formats.
+
+## Build
+
+Rust 1.85 or later (edition 2024).
+
+```sh
+cargo build --release -p nc-cli                         # CLI, Zarr output
+cargo build --release -p nc-cli --features hdf5-static  # + HDF5 output, HDF5 built from source (cmake, C compiler)
+cargo build --release -p nc-cli --features hdf5         # + HDF5 output, system HDF5 (hdf5-devel / libhdf5-dev)
+cargo build --release -p nc-app --features hdf5-static  # desktop app
+```
+
+Binaries: `target/release/neuro-convert`, `target/release/neuro-convert-app`.
+
+The app links against system libraries (xcb, xkbcommon, fontconfig, freetype, Wayland) and needs
+Vulkan at run time. Fedora:
+
+```sh
+sudo dnf install libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel fontconfig-devel freetype-devel wayland-devel vulkan-loader
+```
+
+`scripts/release.sh` builds the CLI with HDF5 and packs it with the docs and example metadata into
+`dist/neuro-convert-<version>-<target>.tar.gz`. The app is not released yet.
+
+## Usage
+
+```sh
+neuro-convert formats                                   # readers and versions in this build
+neuro-convert inspect <recording>                       # streams, events, electrodes, warnings
+neuro-convert convert <recording> -m meta.yaml -o out.nwb.zarr --dry-run   # show the plan and its issues
+neuro-convert convert <recording> -m meta.yaml -o out.nwb.zarr
+neuro-convert validate out.nwb.zarr                     # NWB structure
+neuro-convert verify out.nwb.zarr                       # structure + content against the report
+```
+
+| Option | Use |
 |---|---|
-| TDT block or tank | Synapse / OpenEx; TEV and SEV (v0–v3, hour files) streams, rawpacked, snips (+ `--sort` offline sorts), epocs, scalars, runtime notes, impedance CSVs; `--block` for tanks |
-| SpikeGLX run | Neuropixels 3A / 1.0 family / 2.0 AP, LF and sync (gains from the IMRO table, electrode positions from the geometry map); NI-DAQ analog + digital; OneBox; gates with all their triggers; TTL events from digital lines; sync-pulse alignment between streams; `--block` for folders with several gates |
-| Intan RHD / RHS | Traditional `.rhd` / `.rhs` files and RHX folders (one file per signal type or per channel): amplifier, aux, supply, temperature, board ADC / DAC, RHS DC amplifier and stimulation current, digital lines as events; electrodes per headstage port with impedances |
-| Open Ephys | Binary format, GUI 0.4.4 – 0.6+: continuous streams split into electrode / analog / sync channels, Neuropixels site positions from `settings.xml`, TTL lines and messages as events, synchronized timestamps; `--block` for record node / experiment / recording. Legacy `.continuous` format: channels (gaps as zeros), TTL, messages, `.spikes`; one container per acquisition start |
-| Blackrock | NSx / NEV file spec 2.1 – 3.0 incl. PTP timestamps: continuous channels (pauses as parts), spikes with unit classes, digital / serial input, comments; clock resets as segments |
-| Neuralynx | Cheetah 1 – 6, Pegasus, BML, Neuraview: `.ncs` streams (gaps as parts, measured sample rate), `.nse` / `.nst` / `.ntt` spikes, `.nev` events |
+| `--block <name>` | choose one recording in a folder that holds several (tank block, gate, segment) |
+| `--only A,B` | read only these streams |
+| `--sort <id>` | TDT offline spike sort |
+| `--verify full\|sampled\|off` | content check after writing (CLI default `full`) |
+| `--skip-source-check` | convert even when the source file's own checksum (SpikeGLX `fileSHA1`) fails |
 
-| Output | Format |
-|---|---|
-| NWB 2.11.0 | Zarr v3 store in hdmf-zarr's layout (hdmf-zarr ≥ 0.14 / pynwb, DANDI), schema cached; continuous series (integers kept, gains as `conversion` / `channel_conversion`), events, spike snippets + sorted units, electrodes with positions, tables |
-| NWB 2.11.0 (HDF5) | `-o name.nwb`: the same content as one HDF5 file in pynwb's layout (links, object references), chunked and deflate-compressed in parallel. Build feature `hdf5` (links the system HDF5: `dnf install hdf5-devel` / `apt install libhdf5-dev`) or `hdf5-static` (builds HDF5 from source; needs cmake and a C compiler): `cargo build --release -p nc-cli --features hdf5` |
+Ctrl-C stops a conversion and removes the partial output.
 
-Not yet: probe library and headstage wiring; Plexon, Spike2 and other formats.
+### Metadata file
 
-Release archives (CLI + app with every reader and HDF5 built in, docs, example metadata):
-`scripts/release.sh` → `dist/neuro-convert-<version>-<target>.tar.gz`. Compatibility, maturity
-and change rules: [`docs/compatibility.md`](docs/compatibility.md); adding a format:
-[`docs/readers/README.md`](docs/readers/README.md).
+A recording does not store everything NWB needs (session description, subject species and age,
+time zone, electrode locations), nor how each stream should be exported. `meta.yaml` supplies
+both. Its keys are the recording's own stream and store names. Start from
+[`metadata/session.example.yaml`](metadata/session.example.yaml); real examples are in
+[`metadata/examples/`](metadata/examples/). `--dry-run` lists blocking errors and missing DANDI
+fields.
 
-Ctrl-C during `convert` stops cleanly and removes the partial store; every conversion is verified
-(structure, and content compared with the source: `--verify full|sampled|off`, plus SpikeGLX's own
-file checksums at `full`) and leaves `<output>.report.json` with the content digests.
+### App
 
-## Metadata file
-The source files never say everything NWB needs (session description, subject species/age, time
-zone, electrode placement) nor how each stream should be exported. A YAML file supplies both; keys
-are the source's own names, so any lab's naming works. Start from
-[`metadata/session.example.yaml`](metadata/session.example.yaml); real examples are
-[`metadata/examples/tdt-15-25-33_meps.yaml`](metadata/examples/tdt-15-25-33_meps.yaml) and
-[`metadata/examples/spikeglx-ibl-imec_385_100s.yaml`](metadata/examples/spikeglx-ibl-imec_385_100s.yaml).
-`convert --dry-run` prints the resulting plan with errors (blocking) and DANDI warnings.
+The app runs the same conversion in four steps: Source, Contents, Metadata, Review & convert. It
+previews the data, and saves and loads the same metadata YAML as the CLI. Its default check after
+writing is `sampled`. Guide: [`docs/app.md`](docs/app.md).
 
-## Workspace
+## Repository
+
 ```
-crates/base/          nc-base     errors, sample types, decoding, mmap, text, ISO time (no domain)
-crates/core/          nc-core     the neutral model (Session, Recording, events, snippets, tables,
-                                  metadata, provenance), the Reader trait, the metadata YAML
-crates/readers/tdt/   nc-tdt      TDT reader (tsq, tev streams, sev, epocs, snips, notes, tin, …)
-crates/readers/spikeglx/ nc-spikeglx  SpikeGLX reader (meta, bin, probe gains and geometry, files)
-crates/readers/intan/ nc-intan    Intan RHD / RHS reader (header, data layouts)
-crates/readers/openephys/ nc-openephys  Open Ephys binary + legacy reader (oebin, npy, settings.xml, .continuous)
-crates/readers/blackrock/ nc-blackrock  Blackrock NSx / NEV reader (file spec 2.1 – 3.0, PTP)
-crates/readers/neuralynx/ nc-neuralynx  Neuralynx reader (.ncs, .nse / .nst / .ntt, .nev)
-crates/nwb/           nc-nwb      NWB writer: mapping (plan), types (one file per NWB type),
-                                  backend (Zarr), validate; vendored schema in specs/
-crates/convert/       nc-convert  the API: reader registry, conversion Job (open → plan → write →
-                                  verify, progress, cancel), re-exports (used by CLI and app)
-crates/cli/           nc-cli      the `neuro-convert` command (clap)
-docs/                 format notes and the NWB mapping
-metadata/             metadata template and examples
-tools/python/         cross-checks against TDT's reader and pynwb / nwbinspector
-data/                 local test recordings (git-ignored)
+crates/
+  base/        nc-base       errors, sample types, decoding, memory maps, text, ISO time
+  core/        nc-core       neutral data model (Session), Reader trait, metadata file
+  readers/     nc-<format>   one crate per input format
+  nwb/         nc-nwb        NWB writer: plan, Zarr and HDF5 backends, validation, content check
+  convert/     nc-convert    API for the CLI and the app: reader registry, conversion Job
+  cli/         nc-cli        the `neuro-convert` command
+  app/         nc-app        the desktop app
+docs/          format pages, NWB mapping, app guide, reader guide, compatibility
+templates/     starting point for a new reader
+metadata/      metadata template and examples
+tools/python/  reference comparisons, NWB read-back, test data download
+scripts/       release build
+packaging/     Linux desktop entry
 ```
-Dependencies only point down: `cli → convert → {readers, nwb} → core → base`. Readers never see
-NWB, and the NWB writer never sees a reader. A new format is a new crate under `crates/readers/`
-that implements `nc_core::Reader`; it is enabled through a feature of `nc-convert`, or added at
-run time with `Registry::builtin().with(MyReader)`.
+
+Dependencies point one way: `cli, app → convert → readers, nwb → core → base`. Readers do not
+know NWB; the NWB writer does not know any reader. A reader produces a `Session`; everything after
+it (metadata, NWB plan, writing, verification, the app) works for every format.
+
+`cargo build` and `cargo test` skip `nc-app` (GPUI is a large build); use `-p nc-app`.
+
+## Adding or changing a reader
+
+1. Copy `templates/reader/` to `crates/readers/<format>/` and implement `nc_core::Reader`.
+2. Register it: a feature in `nc-convert`, `nc-cli` and `nc-app`, one line in
+   `Registry::builtin()`, the crate in `nc_convert::versions()`.
+3. Test it on a synthetic fixture and real data, add a reference comparison under
+   `tools/python/compare/`, write `docs/formats/<format>.md`.
+
+Mapping rules every reader follows, known traps and the definition of done:
+[`docs/readers/README.md`](docs/readers/README.md). A reader can also live in its own crate,
+outside this repository: `nc_convert::Registry::builtin().with(MyReader)`.
+
+Every crate has its own version and `CHANGELOG.md`. A change in what a reader reads or how it maps
+is a version bump with a changelog entry. Breaking changes to `nc-core` are deprecated one release
+ahead ([`docs/compatibility.md`](docs/compatibility.md)).
 
 ## Tests
-```
-cargo test --workspace          # unit + integration
-uv run --no-project --with pynwb --with hdmf-zarr --with nwbinspector \
-    tools/python/validate_nwb.py target/nwb-test/small.nwb.zarr --small
-python3 tools/python/fetch_gin.py --all            # neo's public test data → data/raw
-python3 tools/python/fetch_gin.py --check          # local test data against testdata.toml
+
+```sh
+cargo test                                      # all crates except the app
+cargo test -p nc-app                            # the app (headless UI tests)
+python3 tools/python/fetch_gin.py --all         # public test data → data/raw/
+python3 tools/python/fetch_gin.py --check       # local test data against tools/python/testdata.toml
 cargo build --release && uv run --no-project --with neo --with pynwb --with hdmf-zarr \
-    --with tdt --with probeinterface python tools/python/compare <format> <path> ... [--hdf5]
+    --with tdt --with probeinterface python tools/python/compare <format> <path>... [--hdf5]
 ```
-`tools/python/compare` compares each reader with a reference reader (TDT's `tdt.read_block`,
-SpikeGLX's conversion rule + probeinterface, neo for Intan, Open Ephys, Blackrock, Neuralynx),
-through the whole pipeline (`--hdf5`: through the HDF5 writer). `tools/python/testdata.toml` lists
-the data sets with their digests. Real-data tests read `data/raw/` (or `$NC_DATA_DIR`) and skip
-(with a message) when it is absent.
+
+Tests that need real recordings read `data/raw/` (or `$NC_DATA_DIR`) and skip when it is absent.
+`compare` converts each data set, reads the NWB file back with pynwb and compares it with the
+reference reader; `--hdf5` goes through the HDF5 writer.
+
+## License
+
+Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.
