@@ -30,9 +30,9 @@ enum Command {
         #[command(flatten)]
         open: commands::OpenArgs,
     },
-    /// Convert a recording to NWB (Zarr), using a metadata file for what the source lacks
+    /// Convert a recording to NWB (Zarr store, or HDF5 file in HDF5 builds), using a metadata file for what the source lacks
     Convert(commands::convert::ConvertArgs),
-    /// Check an NWB-Zarr store's structure (references, lengths, required fields)
+    /// Check an NWB output's structure (references, lengths, required fields)
     Validate {
         /// Store to check (`.nwb.zarr`, or `.nwb` in HDF5 builds)
         path: PathBuf,

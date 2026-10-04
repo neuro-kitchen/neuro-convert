@@ -31,6 +31,7 @@ pub fn typed_with(namespace: &str, neurodata_type: &str, extra: &[(&str, Value)]
     a
 }
 
+/// Attributes from key–value pairs.
 pub fn attrs(pairs: &[(&str, Value)]) -> Attrs {
     pairs.iter().map(|(k, v)| ((*k).to_string(), v.clone())).collect()
 }

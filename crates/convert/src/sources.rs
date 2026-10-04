@@ -15,13 +15,18 @@ use sha1::{Digest, Sha1};
 /// The result of checking one source file.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceCheck {
+    /// The file.
     pub path: PathBuf,
+    /// `sha1`.
     pub algorithm: String,
+    /// Checksum the source records (lowercase hex).
     pub expected: String,
+    /// Checksum of the file as read (lowercase hex).
     pub actual: String,
 }
 
 impl SourceCheck {
+    /// `true` when the checksums match.
     pub fn ok(&self) -> bool {
         self.expected == self.actual
     }

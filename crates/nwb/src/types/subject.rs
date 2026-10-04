@@ -7,6 +7,7 @@ use crate::backend::Backend;
 use crate::mapping::SubjectFields;
 use nc_core::Result;
 
+/// Writes `/general/subject`.
 pub fn write(b: &dyn Backend, s: &SubjectFields) -> Result<()> {
     b.group("/general/subject", typed("core", "Subject"))?;
     let fields = [("subject_id", &s.id), ("species", &s.species), ("sex", &s.sex), ("strain", &s.strain), ("description", &s.description)];

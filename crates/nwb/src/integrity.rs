@@ -64,12 +64,16 @@ impl std::str::FromStr for VerifyLevel {
 /// Digests of every verified array, as saved in the report.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Digests {
+    /// Block hash (`xxh3-64`).
     pub algorithm: String,
+    /// How much was compared.
     pub level: VerifyLevel,
+    /// One entry per verified array.
     pub arrays: Vec<ArrayDigest>,
 }
 
 impl Digests {
+    /// Arrays with at least one block that differs from the source.
     pub fn mismatched(&self) -> usize {
         self.arrays.iter().filter(|a| !a.mismatched.is_empty()).count()
     }
@@ -88,15 +92,18 @@ impl Digests {
     }
 }
 
+/// Block digests of one array.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ArrayDigest {
     /// Array path in the store (`/acquisition/HDEG/data`).
     pub path: String,
     /// Store dtype (`int16`, `float32`, …).
     pub dtype: String,
+    /// Array shape.
     pub shape: Vec<u64>,
     /// Rows (first dimension) per block; the last block may be shorter.
     pub block_rows: u64,
+    /// Number of blocks.
     pub blocks: u64,
     /// Indices of the compared blocks; `None` = all of them.
     #[serde(default, skip_serializing_if = "Option::is_none")]

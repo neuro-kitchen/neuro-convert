@@ -37,6 +37,7 @@ enum Pending {
     Dataset { path: String, targets: Vec<String>, attrs: Attrs },
 }
 
+/// Writes one HDF5 file in pynwb's layout.
 pub struct Hdf5Backend {
     file: h5::File,
     gzip: Option<u32>,
@@ -348,6 +349,7 @@ pub struct Hdf5Reader {
 }
 
 impl Hdf5Reader {
+    /// Opens the HDF5 file at `path` for reading back.
     pub fn open(path: &Path) -> Result<Self> {
         let file = h5::File::open(path).map_err(|e| err(&path.display().to_string(), e))?;
         let raw = std::fs::File::open(path).map_err(|e| Error::io(path, e))?;

@@ -1,5 +1,6 @@
 //! Target NWB schema version and the cached specifications written under `/specifications`.
 
+/// NWB core schema version written.
 pub const NWB_VERSION: &str = "2.11.0";
 
 /// (namespace, version, [(source name, JSON text)]) for every cached namespace.

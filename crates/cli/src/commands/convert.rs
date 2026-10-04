@@ -172,7 +172,7 @@ pub fn validate(path: &std::path::Path) -> anyhow::Result<()> {
     }
     println!("{}: {errors} errors, {} warnings", path.display(), issues.len() - errors);
     if errors > 0 {
-        anyhow::bail!("{} is not a valid NWB-Zarr store", path.display());
+        anyhow::bail!("{} is not a valid NWB output", path.display());
     }
     Ok(())
 }

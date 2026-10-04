@@ -1,4 +1,4 @@
-//! Structural checks of an NWB-Zarr store: what pynwb needs to open it and DANDI expects.
+//! Structural checks of an NWB output (Zarr store; HDF5 in `backend::hdf5`): what pynwb needs to open it and DANDI expects.
 //!
 //! Not a replacement for pynwb's validator or nwbinspector (which check the full schema and
 //! best practices); this catches broken references, mismatched lengths and missing required
@@ -83,6 +83,7 @@ fn walk(root: &Path, dir: &Path, out: &mut BTreeMap<String, Value>) -> Result<()
     Ok(())
 }
 
+/// Structural checks of the NWB output at `path` (Zarr store or, in HDF5 builds, `.nwb` file).
 pub fn validate(path: &Path) -> Result<Vec<Issue>> {
     #[cfg(feature = "hdf5")]
     if crate::backend::Format::of(path) == crate::backend::Format::Hdf5 {

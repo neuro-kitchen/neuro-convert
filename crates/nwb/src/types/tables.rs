@@ -8,6 +8,7 @@ use crate::backend::Backend;
 use crate::mapping::{safe_name, TablePlan};
 use nc_core::{Result, Table};
 
+/// Writes one table as a `DynamicTable` in `/analysis`.
 pub fn write(b: &dyn Backend, plan: &TablePlan, t: &Table) -> Result<()> {
     let path = format!("/analysis/{}", plan.name);
     let names: Vec<String> = t.columns.iter().map(|c| safe_name(c)).collect();

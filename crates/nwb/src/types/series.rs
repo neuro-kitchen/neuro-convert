@@ -18,6 +18,7 @@ use nc_core::{Error, EventSeries, Recording, RecordingInfo, Result, SampleType};
 /// How a series' samples are stored: the dataset type and the factors that bring them to `unit`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Storage {
+    /// Dataset type.
     pub ty: SampleType,
     /// `conversion` attribute of `data`.
     pub conversion: f64,

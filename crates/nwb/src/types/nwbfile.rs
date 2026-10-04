@@ -10,6 +10,7 @@ use crate::schema::{NWB_VERSION, SPECS};
 use nc_base::time::format_iso;
 use nc_core::Result;
 
+/// Writes the root attributes, required datasets, top-level groups and `/general` fields.
 pub fn write_root(b: &dyn Backend, plan: &NwbPlan) -> Result<()> {
     let root = typed_with("core", "NWBFile", &[("nwb_version", json!(NWB_VERSION)), (".specloc", json!("specifications"))]);
     b.group("/", root)?;
