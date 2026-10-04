@@ -1,0 +1,57 @@
+[workspace]
+resolver = "3"
+members = ["crates/base", "crates/core", "crates/readers/*", "crates/nwb", "crates/convert", "crates/cli", "crates/app"]
+# The GUI (GPUI) is a large build: `cargo build/test` without `-p` skips it; build it with
+# `cargo run -p nc-app` or `--workspace`.
+default-members = ["crates/base", "crates/core", "crates/readers/*", "crates/nwb", "crates/convert", "crates/cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/neuro-kitchen/neuro-convert"
+
+[workspace.dependencies]
+# Workspace crates
+nc-base = { path = "crates/base" }
+nc-core = { path = "crates/core" }
+nc-tdt = { path = "crates/readers/tdt" }
+nc-spikeglx = { path = "crates/readers/spikeglx" }
+nc-intan = { path = "crates/readers/intan" }
+nc-openephys = { path = "crates/readers/openephys" }
+nc-blackrock = { path = "crates/readers/blackrock" }
+nc-neuralynx = { path = "crates/readers/neuralynx" }
+nc-nwb = { path = "crates/nwb" }
+nc-convert = { path = "crates/convert", default-features = false }
+# External
+anyhow = "1.0.104"
+async-channel = "2.5.0"
+chrono = { version = "0.4.45", default-features = false, features = ["std"] }
+clap = { version = "4.6.7", features = ["derive"] }
+ctrlc = "3.5.2"
+# Pinned exactly: gpui-kit pins a weekly GPUI snapshot (gpui-pre); update deliberately
+gpui-kit = "=0.7.0"
+memmap2 = "0.9.11"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+serde_yaml_ng = "0.10.0"
+sha1 = "0.11.0"
+thiserror = "2.0.21"
+uuid = { version = "1.26.1", features = ["v4"] }
+xxhash-rust = { version = "0.8.19", features = ["xxh3"] }
+zarrs = { version = "0.23.14", default-features = false, features = ["filesystem", "gzip"] }
+# NWB on HDF5 (optional): hdf5-metno links HDF5 (feature `static` builds it from source)
+hdf5-metno = "0.15.0"
+hdf5-metno-sys = "0.12.4"
+ndarray = "0.17.2"
+flate2 = "1.1.10"
+zip = { version = "8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+
+# Dev builds (`cargo run`, `cargo test`) stay debuggable but must not be slow: dependencies (GPUI,
+# wgpu, fonts, zarrs, compression) are fully optimized, our crates lightly (readers and the writer
+# handle millions of samples).
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

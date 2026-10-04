@@ -1,0 +1,140 @@
+//! The readers available to a program, and how a path is matched to one.
+
+use std::path::Path;
+
+use nc_core::{Detection, Error, OpenOptions, Reader, Result, Session};
+
+/// An ordered set of readers. [`Registry::builtin`] holds the readers compiled into this build;
+/// [`Registry::with`] adds more (e.g. a reader from another crate).
+pub struct Registry {
+    readers: Vec<Box<dyn Reader>>,
+}
+
+impl Default for Registry {
+    fn default() -> Self {
+        Self::builtin()
+    }
+}
+
+impl Registry {
+    /// No readers.
+    pub fn empty() -> Self {
+        Self { readers: Vec::new() }
+    }
+
+    /// Every reader enabled by this build's cargo features.
+    pub fn builtin() -> Self {
+        #[allow(unused_mut)]
+        let mut r = Self::empty();
+        #[cfg(feature = "tdt")]
+        {
+            r = r.with(nc_tdt::Tdt);
+        }
+        #[cfg(feature = "spikeglx")]
+        {
+            r = r.with(nc_spikeglx::SpikeGlx);
+        }
+        #[cfg(feature = "intan")]
+        {
+            r = r.with(nc_intan::Intan);
+        }
+        #[cfg(feature = "openephys")]
+        {
+            r = r.with(nc_openephys::OpenEphys);
+        }
+        #[cfg(feature = "blackrock")]
+        {
+            r = r.with(nc_blackrock::Blackrock);
+        }
+        #[cfg(feature = "neuralynx")]
+        {
+            r = r.with(nc_neuralynx::Neuralynx);
+        }
+        r
+    }
+
+    /// Adds a reader; on a tie in detection confidence the earlier reader wins.
+    pub fn with(mut self, reader: impl Reader + 'static) -> Self {
+        self.readers.push(Box::new(reader));
+        self
+    }
+
+    /// The readers, in registration order.
+    pub fn readers(&self) -> impl Iterator<Item = &dyn Reader> {
+        self.readers.iter().map(|r| r.as_ref())
+    }
+
+    /// The reader named `name`.
+    pub fn get(&self, name: &str) -> Option<&dyn Reader> {
+        self.readers().find(|r| r.name() == name)
+    }
+
+    /// Readers claiming `path`, best first.
+    pub fn detect(&self, path: &Path) -> Vec<Detection> {
+        let mut found: Vec<Detection> = self.readers().filter_map(|r| r.detect(path)).collect();
+        found.sort_by(|a, b| b.confidence.total_cmp(&a.confidence));
+        found
+    }
+
+    /// Recordings inside `path` when it holds several (tank blocks, runs), from the reader that
+    /// claims it; pass one as `OpenOptions::block`.
+    pub fn containers(&self, path: &Path) -> Vec<String> {
+        self.detect(path).first().and_then(|d| self.get(d.format)).map_or_else(Vec::new, |r| r.containers(path))
+    }
+
+    /// Opens `path` with the reader that claims it most confidently.
+    pub fn open(&self, path: &Path, options: &OpenOptions) -> Result<Session> {
+        let best = self.detect(path).into_iter().next().ok_or_else(|| Error::UnknownFormat(path.to_path_buf()))?;
+        let reader = self.get(best.format).expect("detected by a registered reader");
+        let mut session = reader.open(path, options)?;
+        session.provenance.reader = format!("{} {}", reader.name(), reader.version());
+        Ok(session)
+    }
+}
+
+/// [`Registry::detect`] with the built-in readers.
+pub fn detect(path: &Path) -> Vec<Detection> {
+    Registry::builtin().detect(path)
+}
+
+/// [`Registry::open`] with the built-in readers.
+pub fn open(path: &Path, options: &OpenOptions) -> Result<Session> {
+    Registry::builtin().open(path, options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Fake;
+
+    impl Reader for Fake {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+        fn version(&self) -> &'static str {
+            "0.0.0"
+        }
+        fn description(&self) -> &'static str {
+            "test reader"
+        }
+        fn versions(&self) -> &'static [&'static str] {
+            &[]
+        }
+        fn detect(&self, path: &Path) -> Option<Detection> {
+            (path.extension()? == "fake").then_some(Detection { format: "fake", version: None, confidence: 1.0 })
+        }
+        fn open(&self, _: &Path, _: &OpenOptions) -> Result<Session> {
+            Ok(Session::default())
+        }
+    }
+
+    #[test]
+    fn test_custom_reader_plugs_in() {
+        let r = Registry::empty().with(Fake);
+        assert_eq!(r.detect(Path::new("x.fake"))[0].format, "fake");
+        let s = r.open(Path::new("x.fake"), &OpenOptions::default()).unwrap();
+        assert_eq!(s.provenance.reader, "fake 0.0.0", "the reader and its version are recorded");
+        assert!(matches!(r.open(Path::new("x.other"), &OpenOptions::default()), Err(Error::UnknownFormat(_))));
+    }
+}

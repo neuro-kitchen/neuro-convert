@@ -1,0 +1,12 @@
+[package]
+name = "nc-base"
+description = "neuro-convert primitives: errors, sample types, decoding, memory maps, text and time helpers"
+# This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+memmap2.workspace = true
+serde.workspace = true
+thiserror.workspace = true
