@@ -1,0 +1,241 @@
+//! nc-nwb: Neurodata Without Borders (NWB 2.11) output.
+//!
+//! [`mapping::resolve`] turns a [`Session`] plus the user's metadata file into an [`NwbPlan`];
+//! [`write()`] writes that plan through a storage [`backend`] (Zarr or HDF5), streaming continuous
+//! data in parallel chunks. Nothing here knows which reader produced the session.
+
+#![warn(missing_docs)]
+
+/// This crate's version (`nc-nwb`, from its `Cargo.toml`): recorded in every conversion's
+/// provenance and report, so a problem in a file can be traced to the code that wrote it.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// [`VERSION`].
+pub fn version() -> &'static str {
+    VERSION
+}
+
+pub mod backend;
+pub mod integrity;
+pub mod mapping;
+pub mod schema;
+pub mod types;
+pub mod validate;
+
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+
+pub use integrity::{Digests, VerifyLevel};
+pub use backend::{Format, HDF5};
+pub use mapping::{resolve, NwbPlan};
+
+use backend::Backend;
+use nc_core::{Error, Level, MetadataFile, Result, Session};
+
+/// A fresh random identifier (UUID v4) for `NWBFile.identifier`.
+pub fn new_identifier() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// The planning step in one call: merges `meta`'s electrode declarations into `session`
+/// ([`MetadataFile::apply`]), checks the session's invariants ([`Session::validate`]) and
+/// resolves the NWB plan ([`resolve`]). The plan's issues hold all three, in that order.
+pub fn plan(session: &mut Session, meta: &MetadataFile, new_identifier: impl FnOnce() -> String) -> NwbPlan {
+    let mut issues = meta.apply(session);
+    issues.extend(session.validate());
+    let mut plan = resolve(session, meta, new_identifier);
+    issues.append(&mut plan.issues);
+    plan.issues = issues;
+    plan
+}
+
+/// Chunk length along time for continuous data.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ChunkPolicy {
+    /// A fixed duration for every series (default 1 s).
+    Seconds(f64),
+    /// About [`AUTO_CHUNK_BYTES`] per chunk: the length follows each series' rate, channel count
+    /// and sample size, so every series gets similar-sized chunks.
+    Auto,
+}
+
+/// Target chunk size of [`ChunkPolicy::Auto`]: 10 MB, NeuroConv's default (`chunk_mb=10.0`).
+pub const AUTO_CHUNK_BYTES: u64 = 10_000_000;
+
+impl ChunkPolicy {
+    /// Rows (samples) per chunk for a series of `channels` values of `sample_bytes` at `rate` Hz.
+    pub fn rows(self, rate: f64, channels: usize, sample_bytes: usize) -> u64 {
+        match self {
+            ChunkPolicy::Seconds(s) => ((s * rate).round() as u64).max(1),
+            ChunkPolicy::Auto => (AUTO_CHUNK_BYTES / (channels.max(1) * sample_bytes.max(1)) as u64).max(1),
+        }
+    }
+}
+
+impl std::str::FromStr for ChunkPolicy {
+    type Err = String;
+    fn from_str(s: &str) -> std::result::Result<Self, String> {
+        if s.eq_ignore_ascii_case("auto") {
+            return Ok(ChunkPolicy::Auto);
+        }
+        match s.trim_end_matches('s').parse::<f64>() {
+            Ok(v) if v > 0.0 && v.is_finite() => Ok(ChunkPolicy::Seconds(v)),
+            _ => Err(format!("chunk must be a positive number of seconds or `auto`, got {s:?}")),
+        }
+    }
+}
+
+/// How [`write()`] writes and what the job verifies afterwards.
+#[derive(Debug, Clone)]
+pub struct NwbOptions {
+    /// gzip level 1–9 for datasets; `None` writes uncompressed (fastest). Default 1: on the
+    /// 47 min TDT test block, 24 % smaller for ~35 % more write time.
+    pub gzip: Option<u32>,
+    /// Chunk length along time for continuous data.
+    pub chunks: ChunkPolicy,
+    /// Worker threads copying continuous data. Default: [`available_threads`]`(0)`; an app sharing
+    /// the machine with its UI would use `available_threads(1)`.
+    pub threads: usize,
+    /// Replace an existing output at `dest`.
+    pub overwrite: bool,
+    /// Set to `true` from any thread to stop the write; it then returns [`Error::Cancelled`] and
+    /// the store is left incomplete (no `/specifications`).
+    pub cancel: Option<Arc<AtomicBool>>,
+    /// How much sample data is read back and compared with the source after writing
+    /// ([`integrity::verify`]; run by `nc_convert::Job`, not by [`write()`]).
+    pub verify: VerifyLevel,
+    /// At [`VerifyLevel::Full`], hash source files whose format records a checksum (SpikeGLX
+    /// `fileSHA1`) before writing, and refuse to convert on a mismatch (`nc_convert::Job`).
+    pub source_checksums: bool,
+}
+
+impl Default for NwbOptions {
+    fn default() -> Self {
+        Self { gzip: Some(1), chunks: ChunkPolicy::Seconds(1.0), threads: available_threads(0), overwrite: false, cancel: None, verify: VerifyLevel::Full, source_checksums: true }
+    }
+}
+
+/// CPUs this process may use (`std::thread::available_parallelism`: honors CPU affinity and
+/// container quotas) minus `reserve`, at least 1. When the system cannot tell, 1: slow but never
+/// oversubscribed.
+pub fn available_threads(reserve: usize) -> usize {
+    available(std::thread::available_parallelism().ok().map(|n| n.get()), reserve)
+}
+
+fn available(cpus: Option<usize>, reserve: usize) -> usize {
+    cpus.map_or(1, |n| n.saturating_sub(reserve).max(1))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::available;
+
+    #[test]
+    fn test_available_threads() {
+        assert_eq!(available(Some(12), 0), 12);
+        assert_eq!(available(Some(12), 1), 11);
+        assert_eq!(available(Some(1), 1), 1, "never below one");
+        assert_eq!(available(None, 0), 1, "unknown CPU count falls back to one");
+    }
+}
+
+/// Progress of a write: samples copied so far out of the total.
+#[derive(Debug, Clone, Copy)]
+pub struct Progress {
+    /// Samples copied so far.
+    pub done: u64,
+    /// Samples to copy.
+    pub total: u64,
+    /// Time since the write started.
+    pub elapsed: Duration,
+}
+
+/// What [`write()`] wrote.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct WriteSummary {
+    /// The output.
+    pub path: String,
+    /// Continuous series written.
+    pub series: usize,
+    /// Samples written (all channels).
+    pub samples: u64,
+    /// Wall-clock time of the write.
+    pub seconds: f64,
+}
+
+/// Writes `plan` for `session` to a new NWB output at `dest` (Zarr store, or HDF5 file for a `.nwb` name). `progress` is called from a
+/// monitor thread about twice a second while continuous data is copied.
+pub fn write(
+    session: &Session,
+    plan: &NwbPlan,
+    dest: &Path,
+    options: &NwbOptions,
+    progress: &(dyn Fn(Progress) + Sync),
+) -> Result<WriteSummary> {
+    if plan.has_errors() {
+        let msgs: Vec<&str> = plan.issues.iter().filter(|i| i.level == Level::Error).map(|i| i.message.as_str()).collect();
+        return Err(Error::Unsupported(format!("the NWB plan has errors:\n  - {}", msgs.join("\n  - "))));
+    }
+    if options.cancel.as_ref().is_some_and(|c| c.load(Ordering::Relaxed)) {
+        return Err(Error::Cancelled);
+    }
+    let started = Instant::now();
+    let backend = backend::create(dest, options.gzip, options.overwrite)?;
+    let b: &dyn Backend = backend.as_ref();
+
+    types::nwbfile::write_root(b, plan)?;
+    types::subject::write(b, &plan.subject)?;
+    types::devices::write(b, &plan.devices)?;
+    types::electrodes::write(b, plan, session)?;
+
+    for t in &plan.tables {
+        types::tables::write(b, t, &session.tables[t.table])?;
+    }
+    if plan.events.iter().any(|e| e.table) {
+        types::events::write_group(b)?;
+    }
+    for e in &plan.events {
+        let ev = &session.events[e.event];
+        if e.table {
+            types::events::write(b, e, ev)?;
+        } else {
+            types::series::write_events(b, e, ev)?;
+        }
+    }
+    for p in &plan.snippets {
+        types::snippets::write(b, p, &session.snippets[p.snippet])?;
+    }
+    let stores: Vec<_> = plan.snippets.iter().map(|p| (p, &session.snippets[p.snippet])).collect();
+    types::snippets::write_units(b, &stores)?;
+
+    // Continuous data, with a monitor thread reporting progress
+    let total: u64 = plan.series.iter().map(|s| {
+        let i = session.recordings[s.recording].info();
+        i.samples * i.channel_count() as u64
+    }).sum();
+    let done = AtomicU64::new(0);
+    let finished = std::sync::atomic::AtomicBool::new(false);
+    let result = std::thread::scope(|scope| {
+        scope.spawn(|| {
+            while !finished.load(Ordering::Relaxed) {
+                progress(Progress { done: done.load(Ordering::Relaxed), total, elapsed: started.elapsed() });
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        });
+        let cancel = options.cancel.as_deref();
+        let r = plan.series.iter().try_for_each(|s| {
+            types::series::write_continuous(b, s, session.recordings[s.recording].as_ref(), options.chunks, options.threads, &done, cancel)
+        });
+        finished.store(true, Ordering::Relaxed);
+        r
+    });
+    result?;
+    progress(Progress { done: total, total, elapsed: started.elapsed() });
+
+    // Schema last, so a crash midway never leaves a store that looks complete
+    types::nwbfile::write_specifications(b)?;
+    b.finish()?;
+    Ok(WriteSummary { path: dest.display().to_string(), series: plan.series.len(), samples: total, seconds: started.elapsed().as_secs_f64() })
+}

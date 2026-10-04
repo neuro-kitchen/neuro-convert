@@ -1,0 +1,31 @@
+[package]
+name = "nc-cli"
+description = "neuro-convert command line: inspect recordings and convert them to NWB"
+# This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "neuro-convert"
+path = "src/main.rs"
+
+[features]
+default = ["tdt", "spikeglx", "intan", "openephys", "blackrock", "neuralynx"]
+tdt = ["nc-convert/tdt"]
+spikeglx = ["nc-convert/spikeglx"]
+intan = ["nc-convert/intan"]
+openephys = ["nc-convert/openephys"]
+blackrock = ["nc-convert/blackrock"]
+neuralynx = ["nc-convert/neuralynx"]
+# NWB/HDF5 output (`-o name.nwb`): links the system HDF5 (`dnf install hdf5-devel`) …
+hdf5 = ["nc-convert/hdf5"]
+# … or builds HDF5 from source (cmake + C compiler)
+hdf5-static = ["nc-convert/hdf5-static"]
+
+[dependencies]
+nc-convert = { workspace = true, features = ["nwb"] }
+anyhow.workspace = true
+clap.workspace = true
+ctrlc.workspace = true
+serde_json.workspace = true

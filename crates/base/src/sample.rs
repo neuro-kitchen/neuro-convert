@@ -1,0 +1,65 @@
+//! Sample types and memory layouts of stored data.
+
+use serde::{Deserialize, Serialize};
+
+/// Numeric type of stored samples (little-endian on disk).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum SampleType {
+    /// int8
+    I8,
+    /// int16
+    I16,
+    /// uint16
+    U16,
+    /// int32
+    I32,
+    /// int64
+    I64,
+    /// float32
+    F32,
+    /// float64
+    F64,
+}
+
+impl SampleType {
+    /// Bytes per sample.
+    pub const fn bytes(self) -> usize {
+        match self {
+            SampleType::I8 => 1,
+            SampleType::I16 | SampleType::U16 => 2,
+            SampleType::I32 | SampleType::F32 => 4,
+            SampleType::I64 | SampleType::F64 => 8,
+        }
+    }
+
+    /// NWB / numpy dtype name (`int16`, `float32`, …).
+    pub const fn name(self) -> &'static str {
+        match self {
+            SampleType::I8 => "int8",
+            SampleType::I16 => "int16",
+            SampleType::U16 => "uint16",
+            SampleType::I32 => "int32",
+            SampleType::I64 => "int64",
+            SampleType::F32 => "float32",
+            SampleType::F64 => "float64",
+        }
+    }
+
+    /// The type named `name` (as [`name`](Self::name) spells it).
+    pub fn from_name(name: &str) -> Option<Self> {
+        [Self::I8, Self::I16, Self::U16, Self::I32, Self::I64, Self::F32, Self::F64].into_iter().find(|t| t.name() == name)
+    }
+}
+
+/// Order of multi-channel samples in storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MemoryOrder {
+    /// All samples of channel 0, then channel 1, …
+    ChannelMajor,
+    /// Interleaved: every channel at t0, then every channel at t1, … (acquisition systems).
+    TimeMajor,
+    /// Fixed-size packets per channel scattered through a file (TDT TEV).
+    Packets,
+}

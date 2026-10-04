@@ -1,0 +1,27 @@
+# Metadata for the SpikeGLX file data/raw/spikeglx/imec_385_100s (IBL, Neuropixels 3A, 100 s).
+# Placeholders are marked; replace them before publishing.
+#
+# No stream "type" is needed: the reader supplies the probe's electrodes, so imec0.ap is written
+# as an ElectricalSeries on them; the sync channel becomes a TimeSeries.
+
+session:
+  description: "Neuropixels 3A recording from the IBL test data (100 s excerpt)."
+  timezone: "+00:00"                         # placeholder: zone of fileCreateTime
+  lab: "Example Lab"                         # placeholder
+  institution: "Example University"          # placeholder
+
+subject:
+  id: "ZM_1150"                              # from the original file path in the metadata
+  species: "Mus musculus"
+  sex: U
+  # age: P90D                                # add before publishing (DANDI requires it)
+
+electrode_groups:
+  # Same name as the reader's group: keeps its device and electrodes, sets the location
+  - name: imec0
+    description: "Neuropixels 3A probe"
+    location: "unknown"                      # placeholder: brain area
+
+streams:
+  imec0.ap: { name: ElectricalSeriesAP }
+  imec0.ap.sync: { name: SyncAP, description: "SpikeGLX sync word of probe imec0" }
