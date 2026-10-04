@@ -1,19 +1,29 @@
+//! Sample types and memory layouts of stored data.
+
 use serde::{Deserialize, Serialize};
 
 /// Numeric type of stored samples (little-endian on disk).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SampleType {
+    /// int8
     I8,
+    /// int16
     I16,
+    /// uint16
     U16,
+    /// int32
     I32,
+    /// int64
     I64,
+    /// float32
     F32,
+    /// float64
     F64,
 }
 
 impl SampleType {
+    /// Bytes per sample.
     pub const fn bytes(self) -> usize {
         match self {
             SampleType::I8 => 1,
@@ -23,6 +33,7 @@ impl SampleType {
         }
     }
 
+    /// NWB / numpy dtype name (`int16`, `float32`, …).
     pub const fn name(self) -> &'static str {
         match self {
             SampleType::I8 => "int8",

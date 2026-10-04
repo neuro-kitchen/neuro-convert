@@ -1,3 +1,5 @@
+//! The neutral model of one recording session.
+
 use std::sync::Arc;
 
 use super::electrodes::{Electrode, ElectrodeGroup};
@@ -11,26 +13,36 @@ use super::table::Table;
 /// Everything read from one recording session: what inputs produce and outputs consume.
 #[derive(Default)]
 pub struct Session {
+    /// Identification, subject, devices, notes.
     pub metadata: SessionMetadata,
+    /// Continuous signals.
     pub recordings: Vec<Arc<dyn Recording>>,
+    /// Event series (TTL, epocs, markers, scalars).
     pub events: Vec<EventSeries>,
+    /// Spike or triggered waveform stores.
     pub snippets: Vec<SnippetSeries>,
+    /// Electrode groups (probes, shanks, grids).
     pub electrode_groups: Vec<ElectrodeGroup>,
     /// Contacts, in electrode-table order; referenced by index from snippets.
     pub electrodes: Vec<Electrode>,
+    /// Small text tables (impedance exports).
     pub tables: Vec<Table>,
+    /// Reader, files read, warnings.
     pub provenance: Provenance,
 }
 
 impl Session {
+    /// The recording named `name`.
     pub fn recording(&self, name: &str) -> Option<&Arc<dyn Recording>> {
         self.recordings.iter().find(|r| r.info().name == name)
     }
 
+    /// The event series named `name`.
     pub fn event_series(&self, name: &str) -> Option<&EventSeries> {
         self.events.iter().find(|e| e.name == name)
     }
 
+    /// The electrode group named `name`.
     pub fn electrode_group(&self, name: &str) -> Option<&ElectrodeGroup> {
         self.electrode_groups.iter().find(|g| g.name == name)
     }

@@ -1,3 +1,5 @@
+//! Spike and triggered waveform snippets; waveforms are served on demand through [`Waveforms`].
+
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
@@ -23,6 +25,7 @@ pub struct MemoryWaveforms {
 }
 
 impl MemoryWaveforms {
+    /// `samples` values per snippet, snippets back to back.
     pub fn new(samples: usize, data: Vec<f32>) -> Self {
         Self { samples, data }
     }
@@ -50,9 +53,13 @@ pub const SNIPPET_BLOCK: usize = 65_536;
 /// Timestamps, channels and sort codes are in memory; waveforms are read on demand.
 #[derive(Clone)]
 pub struct SnippetSeries {
+    /// Name inside its session.
     pub name: String,
+    /// What the snippets are.
     pub description: String,
+    /// Samples per second within a snippet.
     pub sample_rate: f64,
+    /// Samples in each snippet.
     pub samples_per_snippet: usize,
     /// Seconds from the session start.
     pub timestamps: Vec<f64>,
@@ -62,6 +69,7 @@ pub struct SnippetSeries {
     pub sort_codes: Vec<u16>,
     /// The waveforms, `samples_per_snippet` values each, scaled to `unit`.
     pub waveforms: Arc<dyn Waveforms>,
+    /// Unit of the waveform values (`V`).
     pub unit: String,
     /// Electrode (index into `Session::electrodes`) of each source channel; filled by the reader
     /// or by `MetadataFile::apply`. Channels without one are not written.
@@ -98,10 +106,12 @@ impl fmt::Debug for SnippetSeries {
 }
 
 impl SnippetSeries {
+    /// Number of snippets.
     pub fn len(&self) -> usize {
         self.timestamps.len()
     }
 
+    /// `true` without snippets.
     pub fn is_empty(&self) -> bool {
         self.timestamps.is_empty()
     }

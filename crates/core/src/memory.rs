@@ -1,3 +1,5 @@
+//! A [`Recording`] held in memory, for tests and derived data.
+
 use std::collections::BTreeMap;
 use std::ops::Range;
 
@@ -12,6 +14,7 @@ pub struct MemoryRecording {
 }
 
 impl MemoryRecording {
+    /// `data` holds `channels` channels back to back (channel-major), already in `unit`; channels are named `ch0`, `ch1`, ….
     pub fn new(name: &str, data: Vec<f32>, channels: usize, sample_rate: f64, unit: &str) -> Result<Self> {
         if channels == 0 || data.len() % channels != 0 {
             return Err(Error::BufferSize { expected: channels, actual: data.len() });
