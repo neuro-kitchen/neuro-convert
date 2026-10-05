@@ -21,8 +21,8 @@ Converts neurophysiology recordings to [NWB](https://nwb.org) 2.11, as a Zarr st
 - **Traceable.** The program, reader and crate versions are recorded in the report and in the
   NWB file (`/general/source_script`).
 
-Documentation: [`docs/`](docs/introduction.md), an mdBook (`mdbook serve docs` to read it
-locally). API reference: `cargo doc --no-deps --workspace --exclude nc-app --open`.
+Documentation: <https://neuro-kitchen.github.io/neuro-convert/> (sources in [`docs/`](docs/introduction.md),
+an mdBook; `mdbook serve docs` to read it locally). API reference: `cargo doc --no-deps --workspace --exclude nc-app --open`.
 
 ## Supported formats
 

@@ -11,5 +11,7 @@ build-dir = "../target/book"
 create-missing = false
 
 [output.html]
+# Served from https://neuro-kitchen.github.io/neuro-convert/ (see .github/workflows/docs.yml)
+site-url = "/neuro-convert/"
 git-repository-url = "https://github.com/neuro-kitchen/neuro-convert"
 edit-url-template = "https://github.com/neuro-kitchen/neuro-convert/edit/main/docs/{path}"
