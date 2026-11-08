@@ -165,6 +165,17 @@ Tests that need real recordings read `data/raw/` (or `$NC_DATA_DIR`) and skip wh
 `compare` converts each data set, reads the NWB file back with pynwb and compares it with the
 reference reader; `--hdf5` goes through the HDF5 writer.
 
+## Contributing
+
+Issues and pull requests are welcome: see [CONTRIBUTING.md](CONTRIBUTING.md), and
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities privately. Everyone taking part follows
+the neuro-kitchen [Code of Conduct](https://github.com/neuro-kitchen/.github/blob/main/CODE_OF_CONDUCT.md).
+
+## Citing
+
+If you use neuro-convert in your work, please cite it: [CITATION.cff](CITATION.cff) (GitHub's
+"Cite this repository" button gives APA and BibTeX).
+
 ## License
 
 Licensed under either of [Apache License 2.0](LICENSE-APACHE) or [MIT](LICENSE-MIT), at your option.

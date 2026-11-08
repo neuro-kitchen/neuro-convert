@@ -1,0 +1,31 @@
+name: Feature request
+description: A format, version, NWB mapping, command or improvement you need
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you want to do
+      description: The task, not only the feature. What do you use today (NeuroConv, SpikeInterface, MATLAB, …)?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What neuro-convert could offer
+      description: The reader, format version, NWB mapping, metadata field, CLI option or app step you have in mind.
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Where you would use it
+      multiple: true
+      options:
+        - Command line
+        - Desktop app
+        - Rust crates
+        - DANDI upload
+  - type: textarea
+    id: references
+    attributes:
+      label: References
+      description: Format specifications, reference readers or NWB extensions the behaviour should follow, and public sample data if there is any.

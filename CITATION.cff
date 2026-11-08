@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use neuro-convert in your work, please cite it as below."
+type: software
+title: "neuro-convert: streaming, verified conversion of neurophysiology recordings to NWB"
+abstract: >-
+  Converts neurophysiology recordings (TDT, SpikeGLX, Intan, Open Ephys, Blackrock, Neuralynx) to
+  NWB 2.11, as a Zarr store or an HDF5 file, from a command line or a desktop app written in Rust.
+  Recordings are streamed block by block, samples keep their stored integer type, and the written
+  data is read back and compared with the source (xxh3-64 per block); each reader is compared value
+  for value with a reference reader on public test data.
+authors:
+  - given-names: Jesus
+    family-names: Penaloza Aponte
+    affiliation: Independent Researcher
+    orcid: "https://orcid.org/0000-0001-5903-2291"
+repository-code: "https://github.com/neuro-kitchen/neuro-convert"
+url: "https://neuro-kitchen.github.io/neuro-convert/"
+license:
+  - MIT
+  - Apache-2.0
+version: 0.1.0
+date-released: "2026-10-04"
+keywords:
+  - neuroscience
+  - neurophysiology
+  - electrophysiology
+  - NWB
+  - Neurodata Without Borders
+  - data conversion
+  - Zarr
+  - HDF5
+  - Rust

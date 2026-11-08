@@ -1,0 +1,84 @@
+name: Bug report
+description: Something fails, crashes, hangs or errors
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Conversions that finish but write wrong values, missing channels or
+        a different mapping than the reference reader have their own form: **Wrong or different output**.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you ran, what you expected, what you got. Paste the error message.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command (or app steps) and the metadata file. `neuro-convert convert … --dry-run` output helps.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: format
+    attributes:
+      label: Input format
+      multiple: true
+      options:
+        - TDT
+        - SpikeGLX
+        - Intan
+        - Open Ephys
+        - Blackrock
+        - Neuralynx
+        - Not format-specific
+    validations:
+      required: true
+  - type: dropdown
+    id: interface
+    attributes:
+      label: Used through
+      multiple: true
+      options:
+        - "`neuro-convert` command line"
+        - Desktop app
+        - Rust crates
+    validations:
+      required: true
+  - type: dropdown
+    id: output
+    attributes:
+      label: Output
+      multiple: true
+      options:
+        - NWB Zarr (`.nwb.zarr`)
+        - NWB HDF5 (`.nwb`)
+        - None (inspect / validate / verify)
+  - type: input
+    id: version
+    attributes:
+      label: neuro-convert version
+      placeholder: "0.1.0 (neuro-convert --version; `neuro-convert formats` for reader versions)"
+    validations:
+      required: true
+  - type: textarea
+    id: recording
+    attributes:
+      label: Recording
+      description: Acquisition software and version, size, number of channels and streams. `neuro-convert inspect <recording>` prints most of it. Do not attach recordings you may not share.
+      render: text
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, how you installed it (release archive or built from source, with features).
+      render: text
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Anything else printed. For a crash, `RUST_BACKTRACE=1`.
+      render: text
