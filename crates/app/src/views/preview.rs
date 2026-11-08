@@ -18,7 +18,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::TestSupportExt as _;
 use gpui_kit::{
     canvas, div, fill, point, px, relative, size, Bounds, Context, CursorStyle, Entity, FocusHandle, InteractiveElement as _, IntoElement, KeyDownEvent, MouseButton,
-    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollWheelEvent, SharedString, Styled as _, Subscription, Window,
+    MouseDownEvent, MouseMoveEvent, MouseUpEvent, ParentElement as _, Pixels, Render, ScrollEvent, SharedString, Styled as _, Subscription, Window,
 };
 
 use crate::viewmodels::preview::{window_label, LANE_CHOICES};
@@ -72,7 +72,7 @@ impl PreviewView {
         Self { vm, focus: cx.focus_handle(), wheel: 0.0, drag: None, traces: cell(), overview: cell(), scrollbar: cell(), _vm: sub }
     }
 
-    fn on_wheel(&mut self, e: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_wheel(&mut self, e: &ScrollEvent, _: &mut Window, cx: &mut Context<Self>) {
         let d = e.delta.pixel_delta(px(20.));
         let (dx, dy) = (d.x.as_f32(), d.y.as_f32());
         let b = self.traces.get();
@@ -326,7 +326,7 @@ impl Render for PreviewView {
             .flex_1()
             .min_h_0()
             .gap(px(GAP))
-            .on_scroll_wheel(cx.listener(Self::on_wheel))
+            .on_scroll(cx.listener(Self::on_wheel))
             .on_key_down(cx.listener(Self::on_key))
             .child(label_col)
             .child(

@@ -25,7 +25,8 @@ impl TinSummary {
 pub fn read_tin(path: &Path) -> Option<TinSummary> {
     let file = std::fs::File::open(path).ok()?;
     let mut zip = zip::ZipArchive::new(file).ok()?;
-    let entries = zip.file_names().map(str::to_string).collect();
+    // zip 9 yields `Result<Cow<str>>`: names that fail to decode are left out of the listing
+    let entries = zip.file_names().filter_map(Result::ok).map(|n| n.into_owned()).collect();
     let mut text = String::new();
     zip.by_name("Summary.txt").ok()?.read_to_string(&mut text).ok()?;
     Some(TinSummary { fields: parse_summary(&text), entries })

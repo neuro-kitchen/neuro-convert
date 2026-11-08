@@ -1,6 +1,6 @@
 # Build and install
 
-neuro-convert is built from source with Cargo. Rust 1.85 or later (edition 2024).
+neuro-convert is built from source with Cargo. Rust 1.92 or later (edition 2024).
 
 ```sh
 git clone https://github.com/neuro-kitchen/neuro-convert
