@@ -1,0 +1,66 @@
+name: Wrong or different output
+description: The conversion finishes, but the NWB file differs from the source or the reference reader
+labels: ["results"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        neuro-convert aims to match its reference readers value for value (neo, TDT's `tdt`
+        package, SpikeGLX's conversion rules, probeinterface), keeping samples in their stored type
+        with gains in `conversion` / `channel_conversion`. Known, documented differences are listed
+        per format in `docs/formats/`.
+  - type: dropdown
+    id: format
+    attributes:
+      label: Input format
+      options:
+        - TDT
+        - SpikeGLX
+        - Intan
+        - Open Ephys
+        - Blackrock
+        - Neuralynx
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: What differs
+      multiple: true
+      options:
+        - Sample values or gains
+        - Timestamps, rates or alignment
+        - Channels, electrodes or probe geometry
+        - Events or spikes
+        - Metadata (session, subject, devices)
+        - NWB structure (validation, DANDI, pynwb can't read it)
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: compare
+    attributes:
+      label: What you compared
+      description: The neuro-convert command and the reference you compared with (e.g. `neo.io.SpikeGLXIO(...)`, `tools/python/compare spikeglx <path>`).
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: difference
+    attributes:
+      label: How large is the difference
+      description: Which channels / streams, max absolute difference, offsets, counts expected vs found.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: neuro-convert version and output
+      placeholder: "0.1.0, .nwb.zarr (does the HDF5 output give the same result?)"
+    validations:
+      required: true
+  - type: textarea
+    id: data
+    attributes:
+      label: Data
+      description: How to get a recording that shows it (a public GIN data set is best). Do not attach recordings you may not share.
