@@ -52,7 +52,7 @@ binary-format spikes; Plexon, Spike2 and other formats.
 
 ## Build
 
-Rust 1.85 or later (edition 2024).
+Rust 1.92 or later (edition 2024).
 
 ```sh
 cargo build --release -p nc-cli                         # CLI, Zarr output

@@ -4,6 +4,7 @@ description = "neuro-convert desktop app (GPUI + gpui-kit): inspect recordings a
 # This crate's own version: bump it when its behaviour or API changes (see CHANGELOG.md)
 version = "0.1.0"
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 
 [[bin]]

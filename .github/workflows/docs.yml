@@ -23,7 +23,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  MDBOOK_VERSION: "0.5.2"
+  MDBOOK_VERSION: "0.5.4"
 
 jobs:
   build:

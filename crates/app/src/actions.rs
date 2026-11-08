@@ -1,6 +1,6 @@
 //! App actions and their key bindings (`secondary` = Cmd on macOS, Ctrl elsewhere).
 
-use gpui_kit::{actions, App, KeyBinding};
+use gpui_kit::{actions, Action, App, KeyBinding};
 
 actions!(
     nc_app,
@@ -26,13 +26,17 @@ actions!(
 );
 
 pub fn bind_keys(cx: &mut App) {
-    cx.bind_keys([
-        KeyBinding::new("secondary-o", OpenRecording, None),
-        KeyBinding::new("secondary-shift-o", OpenRecordingFile, None),
-        KeyBinding::new("secondary-l", LoadMetadata, None),
-        KeyBinding::new("secondary-s", SaveMetadata, None),
-        KeyBinding::new("secondary-enter", Convert, None),
-        KeyBinding::new("escape", Cancel, None),
-        KeyBinding::new("secondary-q", Quit, None),
-    ]);
+    // `KeyBinding::new` no longer resolves `secondary-`; `load` resolves it for the host OS
+    let bindings: [(&str, Box<dyn Action>); 7] = [
+        ("secondary-o", Box::new(OpenRecording)),
+        ("secondary-shift-o", Box::new(OpenRecordingFile)),
+        ("secondary-l", Box::new(LoadMetadata)),
+        ("secondary-s", Box::new(SaveMetadata)),
+        ("secondary-enter", Box::new(Convert)),
+        ("escape", Box::new(Cancel)),
+        ("secondary-q", Box::new(Quit)),
+    ];
+    let bindings: Vec<KeyBinding> =
+        bindings.into_iter().map(|(keys, action)| KeyBinding::load(keys, action, None, false, None, cx).expect("valid keystroke")).collect();
+    cx.bind_keys(bindings);
 }
